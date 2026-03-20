@@ -11,19 +11,28 @@ from flask import (
 from werkzeug.utils import secure_filename
 from models import db, User, Medicine, Center, Dispensing, RequestQueue, ActivityLog, Notification, Recipient, MedicineCategory
 
+from flask_sqlalchemy import SQLAlchemy
+from flask_cors import CORS
+
 # app configuration
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'medisync-secret-key-change-in-production'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///medisync.db'
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'medisync-dev-key')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
 
+database_url = os.getenv('DATABASE_URL')
+if database_url and database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///medisync.db'
+
+from models import db 
 db.init_app(app)
 
-# upload folder
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(os.path.join(os.path.dirname(__file__), 'static', 'images'), exist_ok=True)
 
+CORS(app)
 
 # helpers
 def login_required(f):
