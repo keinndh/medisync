@@ -1,0 +1,1181 @@
+import os
+import io
+import csv
+from datetime import datetime, date, timedelta
+from functools import wraps
+
+from flask import (
+    Flask, render_template, request, jsonify, session,
+    redirect, url_for, send_file, make_response
+)
+from werkzeug.utils import secure_filename
+from models import db, User, Medicine, Center, Dispensing, RequestQueue, ActivityLog, Notification, Recipient, MedicineCategory
+
+# app configuration
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'medisync-secret-key-change-in-production'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///medisync.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
+
+db.init_app(app)
+
+# upload folder
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(os.path.join(os.path.dirname(__file__), 'static', 'images'), exist_ok=True)
+
+
+# helpers
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            if request.is_json or request.path.startswith('/api/'):
+                return jsonify({'error': 'Unauthorized'}), 401
+            return redirect(url_for('login_page'))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def log_activity(action, details=''):
+    user = User.query.get(session.get('user_id'))
+    performed_by = user.full_name if user else 'System'
+    entry = ActivityLog(action=action, performed_by=performed_by, details=details)
+    db.session.add(entry)
+    db.session.commit()
+
+
+def add_notification(message, notif_type='info', reference_id=None, reference_type=''):
+    n = Notification(
+        message=message, type=notif_type,
+        reference_id=reference_id, reference_type=reference_type
+    )
+    db.session.add(n)
+    db.session.commit()
+
+
+def check_expirations():
+    """Check medicines for expiration and create notifications."""
+    today = date.today()
+    near_expiry_threshold = today + timedelta(days=180)  # 6 months
+    medicines = Medicine.query.filter(
+        Medicine.status.in_(['Active', 'Near Expiry']),
+        Medicine.expiration_date.isnot(None)
+    ).all()
+    for med in medicines:
+        if med.expiration_date <= today and med.status in ['Active', 'Near Expiry']:
+            med.status = 'Expired'
+            add_notification(
+                f'{med.article_name} (Stock #{med.stock_number}) has expired.',
+                'alert', med.id, 'medicine'
+            )
+        elif med.expiration_date <= near_expiry_threshold and med.status == 'Active':
+            med.status = 'Near Expiry'
+            existing = Notification.query.filter_by(
+                reference_id=med.id, reference_type='medicine_expiring'
+            ).first()
+            if not existing:
+                days = (med.expiration_date - today).days
+                add_notification(
+                    f'{med.article_name} (Stock #{med.stock_number}) expires in {days} days.',
+                    'warning', med.id, 'medicine_expiring'
+                )
+    db.session.commit()
+
+
+# pages routes 
+@app.route('/')
+def index():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard_page'))
+    return redirect(url_for('login_page'))
+
+
+@app.route('/login')
+def login_page():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard_page'))
+    return render_template('login.html')
+
+
+@app.route('/dashboard')
+@login_required
+def dashboard_page():
+    check_expirations()
+    return render_template('dashboard.html')
+
+
+@app.route('/inventory')
+@login_required
+def inventory_page():
+    return render_template('inventory.html')
+
+
+@app.route('/dispensing')
+@login_required
+def dispensing_page():
+    return render_template('dispensing.html')
+
+
+@app.route('/analytics')
+@login_required
+def analytics_page():
+    return render_template('analytics.html')
+
+
+@app.route('/centers')
+@login_required
+def centers_page():
+    return render_template('centers.html')
+
+
+@app.route('/logs')
+@login_required
+def logs_page():
+    return render_template('logs.html')
+
+
+@app.route('/settings')
+@login_required
+def settings_page():
+    return render_template('settings.html')
+
+
+# auth api
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.get_json()
+    username = data.get('username', '')
+    password = data.get('password', '')
+    user = User.query.filter_by(username=username).first()
+    if user and user.check_password(password):
+        session['user_id'] = user.id
+        log_activity('Login', f'User {user.username} logged in.')
+        return jsonify({'success': True, 'user': user.to_dict()})
+    return jsonify({'success': False, 'error': 'Invalid username or password.'}), 401
+
+
+@app.route('/api/logout', methods=['POST'])
+@login_required
+def api_logout():
+    log_activity('Logout', 'User logged out.')
+    session.clear()
+    return jsonify({'success': True})
+
+
+@app.route('/api/me')
+@login_required
+def api_me():
+    user = User.query.get(session['user_id'])
+    return jsonify(user.to_dict())
+
+
+# dasboard api
+@app.route('/api/dashboard/stats')
+@login_required
+def api_dashboard_stats():
+    today = date.today()
+    near_expiry_threshold = today + timedelta(days=180)
+    total = Medicine.query.filter(Medicine.status.in_(['Active', 'Near Expiry', 'Expired'])).count()
+    expired = Medicine.query.filter_by(status='Expired').count()
+    about_to_expire = Medicine.query.filter(
+        Medicine.status.in_(['Active', 'Near Expiry']),
+        Medicine.expiration_date.isnot(None),
+        Medicine.expiration_date <= near_expiry_threshold,
+        Medicine.expiration_date > today
+    ).count()
+    dispensed = Dispensing.query.count()
+    discarded = Medicine.query.filter_by(status='Discarded').count()
+    return jsonify({
+        'total_items': total,
+        'about_to_expire': about_to_expire,
+        'expired': expired,
+        'dispensed': dispensed,
+        'discarded': discarded
+    })
+
+
+@app.route('/api/dashboard/block/<block_type>')
+@login_required
+def api_dashboard_block(block_type):
+    today = date.today()
+    near_expiry_threshold = today + timedelta(days=180)
+    items = []
+    if block_type == 'total':
+        items = [m.to_dict() for m in Medicine.query.filter(Medicine.status.in_(['Active', 'Near Expiry', 'Expired'])).all()]
+    elif block_type == 'about_to_expire':
+        items = [m.to_dict() for m in Medicine.query.filter(
+            Medicine.status.in_(['Active', 'Near Expiry']),
+            Medicine.expiration_date.isnot(None),
+            Medicine.expiration_date <= near_expiry_threshold,
+            Medicine.expiration_date > today
+        ).all()]
+    elif block_type == 'expired':
+        items = [m.to_dict() for m in Medicine.query.filter_by(status='Expired').all()]
+    elif block_type == 'dispensed':
+        items = [d.to_dict() for d in Dispensing.query.order_by(Dispensing.date_time.desc()).all()]
+    elif block_type == 'discarded':
+        items = [m.to_dict() for m in Medicine.query.filter_by(status='Discarded').all()]
+    return jsonify(items)
+
+
+@app.route('/api/dashboard/recent')
+@login_required
+def api_dashboard_recent():
+    medicines = Medicine.query.order_by(Medicine.date_added.desc()).limit(20).all()
+    return jsonify([m.to_dict() for m in medicines])
+
+
+# inventory api
+@app.route('/api/medicines')
+@login_required
+def api_medicines():
+    query = Medicine.query.filter(Medicine.status != 'Deleted')
+
+    # Universal search - searches across all fields
+    search = request.args.get('search', '')
+    if search:
+        query = query.filter(
+            db.or_(
+                Medicine.article_name.ilike(f'%{search}%'),
+                Medicine.stock_number.ilike(f'%{search}%'),
+                Medicine.unit_of_measurement.ilike(f'%{search}%'),
+                Medicine.status.ilike(f'%{search}%'),
+                Medicine.category.ilike(f'%{search}%'),
+                Medicine.description_dosage.ilike(f'%{search}%'),
+                Medicine.remarks.ilike(f'%{search}%')
+            )
+        )
+
+    # filtering
+    status_filter = request.args.get('status', '')
+    if status_filter:
+        query = query.filter_by(status=status_filter)
+    category_filter = request.args.get('category', '')
+    if category_filter:
+        query = query.filter_by(category=category_filter)
+    date_filter = request.args.get('date_added', '')
+    if date_filter:
+        try:
+            filter_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
+            query = query.filter(db.func.date(Medicine.date_added) == filter_date)
+        except ValueError:
+            pass
+
+    # sorting
+    sort_by = request.args.get('sort', 'date_added')
+    if sort_by == 'quantity':
+        query = query.order_by(Medicine.quantity.desc())
+    elif sort_by == 'alphabetical':
+        query = query.order_by(Medicine.article_name.asc())
+    elif sort_by == 'stock_number':
+        query = query.order_by(Medicine.stock_number.asc())
+    else:
+        query = query.order_by(Medicine.date_added.desc())
+
+    medicines = query.all()
+    return jsonify([m.to_dict() for m in medicines])
+
+
+@app.route('/api/medicines', methods=['POST'])
+@login_required
+def api_add_medicine():
+    data = request.get_json()
+    exp_date = None
+    if data.get('expiration_date'):
+        try:
+            exp_date = datetime.strptime(data['expiration_date'], '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'error': 'Invalid expiration date format.'}), 400
+
+    existing = Medicine.query.filter_by(stock_number=data.get('stock_number', '')).first()
+    if existing:
+        return jsonify({'error': 'Stock number already exists.'}), 400
+
+    status = 'Active'
+    if exp_date:
+        if exp_date <= date.today():
+            status = 'Expired'
+        elif exp_date <= date.today() + timedelta(days=180):
+            status = 'Near Expiry'
+
+    med = Medicine(
+        stock_number=data.get('stock_number', ''),
+        article_name=data.get('article_name', ''),
+        description_dosage=data.get('description_dosage', ''),
+        unit_of_measurement=data.get('unit_of_measurement', ''),
+        quantity=int(data.get('quantity', 0)),
+        category=data.get('category', ''),
+        remarks=data.get('remarks', ''),
+        expiration_date=exp_date,
+        is_new_batch=True,
+        status=status
+    )
+    db.session.add(med)
+    db.session.commit()
+    log_activity('Add', f'Added medicine: {med.article_name} (Stock #{med.stock_number})')
+    add_notification(f'New medicine added: {med.article_name}', 'info', med.id, 'medicine')
+    return jsonify(med.to_dict()), 201
+
+
+@app.route('/api/medicines/<int:med_id>', methods=['PUT'])
+@login_required
+def api_edit_medicine(med_id):
+    med = Medicine.query.get_or_404(med_id)
+    data = request.get_json()
+
+    old_qty = med.quantity
+    med.article_name = data.get('article_name', med.article_name)
+    med.description_dosage = data.get('description_dosage', med.description_dosage)
+    med.unit_of_measurement = data.get('unit_of_measurement', med.unit_of_measurement)
+    med.quantity = int(data.get('quantity', med.quantity))
+    med.category = data.get('category', med.category)
+    med.remarks = data.get('remarks', med.remarks)
+
+    if data.get('expiration_date'):
+        try:
+            exp_date = datetime.strptime(data['expiration_date'], '%Y-%m-%d').date()
+            med.expiration_date = exp_date
+            if med.status in ['Active', 'Near Expiry', 'Expired']:
+                if exp_date <= date.today():
+                    med.status = 'Expired'
+                elif exp_date <= date.today() + timedelta(days=180):
+                    med.status = 'Near Expiry'
+                else:
+                    med.status = 'Active'
+        except ValueError:
+            pass
+
+    med.is_new_batch = False
+    action = 'Edit'
+    details = f'Edited medicine: {med.article_name} (Stock #{med.stock_number})'
+
+    db.session.commit()
+    log_activity(action, details)
+    return jsonify(med.to_dict())
+
+
+@app.route('/api/medicines/<int:med_id>/restock', methods=['POST'])
+@login_required
+def api_restock_medicine(med_id):
+    old_med = Medicine.query.get_or_404(med_id)
+    data = request.get_json()
+    
+    qty = int(data.get('quantity', 0))
+    if qty <= 0:
+        return jsonify({'error': 'Invalid quantity.'}), 400
+
+    exp_date = None
+    if data.get('expiration_date'):
+        try:
+            exp_date = datetime.strptime(data['expiration_date'], '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'error': 'Invalid expiration date format.'}), 400
+
+    status = 'Active'
+    if exp_date:
+        if exp_date <= date.today():
+            status = 'Expired'
+        elif exp_date <= date.today() + timedelta(days=180):
+            status = 'Near Expiry'
+
+    # generate stock number for restocked: original-MMDDYYYY
+    restock_date_str = date.today().strftime('%m%d%Y')
+    new_stock_number = f"{old_med.stock_number}-{restock_date_str}"
+    # if same date restock already exists, append counter
+    counter = 0
+    while Medicine.query.filter_by(stock_number=new_stock_number).first():
+        counter += 1
+        new_stock_number = f"{old_med.stock_number}-{restock_date_str}-{counter}"
+
+    new_med = Medicine(
+        stock_number=new_stock_number,
+        article_name=old_med.article_name,
+        description_dosage=old_med.description_dosage,
+        unit_of_measurement=old_med.unit_of_measurement,
+        quantity=qty,
+        category=old_med.category,
+        remarks=old_med.remarks,
+        expiration_date=exp_date,
+        is_new_batch=False,
+        is_restock=True,
+        status=status
+    )
+    
+    db.session.add(new_med)
+    db.session.commit()
+    
+    log_activity('Restock', f'Restocked medicine: {new_med.article_name} (New Stock #{new_med.stock_number}) with {qty} {new_med.unit_of_measurement}')
+    add_notification(f'Medicine restocked: {new_med.article_name}', 'info', new_med.id, 'medicine')
+    
+    return jsonify(new_med.to_dict()), 201
+
+
+@app.route('/api/medicines/<int:med_id>/discard', methods=['POST'])
+@login_required
+def api_discard_medicine(med_id):
+    med = Medicine.query.get_or_404(med_id)
+    data = request.get_json()
+    reason = data.get('reason', '')
+    med.status = 'Discarded'
+    med.discard_reason = reason
+    db.session.commit()
+    log_activity('Discard', f'Discarded medicine: {med.article_name}. Reason: {reason}')
+    add_notification(f'Medicine discarded: {med.article_name}', 'warning', med.id, 'medicine')
+    return jsonify(med.to_dict())
+
+
+@app.route('/api/medicines/<int:med_id>', methods=['DELETE'])
+@login_required
+def api_delete_medicine(med_id):
+    med = Medicine.query.get_or_404(med_id)
+    data = request.get_json() or {}
+    reason = data.get('reason', '')
+    med.status = 'Deleted'
+    med.delete_reason = reason
+    db.session.commit()
+    log_activity('Delete', f'Deleted medicine: {med.article_name}. Reason: {reason}')
+    return jsonify({'success': True})
+
+
+@app.route('/api/medicines/categories')
+@login_required
+def api_categories():
+    # Categories from existing medicine records
+    med_cats = db.session.query(Medicine.category).distinct().filter(
+        Medicine.category != '', Medicine.category.isnot(None)
+    ).all()
+    med_cat_list = [c[0] for c in med_cats]
+    
+    # Categories from the imported/system list
+    system_cats = MedicineCategory.query.all()
+    system_cat_list = [c.name for c in system_cats]
+    
+    # Merge and deduplicate
+    all_cats = sorted(list(set(med_cat_list + system_cat_list)))
+    return jsonify(all_cats)
+
+
+# export api
+@app.route('/api/inventory/export/csv')
+@login_required
+def api_export_csv():
+    medicines = Medicine.query.filter(Medicine.status != 'Deleted').order_by(Medicine.date_added.desc()).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'Stock Number', 'Article/Name', 'Description/Dosage', 'Unit of Measurement',
+        'Quantity', 'Category', 'Expiration Date', 'Days To Expire', 'Status', 'Remarks', 'Date Added'
+    ])
+    for m in medicines:
+        writer.writerow([
+            m.stock_number, m.article_name, m.description_dosage, m.unit_of_measurement,
+            m.quantity, m.category,
+            m.expiration_date.isoformat() if m.expiration_date else '',
+            m.to_dict().get('days_remaining') if m.to_dict().get('days_remaining') is not None else '-',
+            m.status, m.remarks,
+            m.date_added.strftime('%Y-%m-%d %H:%M') if m.date_added else ''
+        ])
+    output.seek(0)
+    return send_file(
+        io.BytesIO(output.getvalue().encode('utf-8')),
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=f'medisync_inventory_{date.today().isoformat()}.csv'
+    )
+
+
+@app.route('/api/inventory/export/pdf')
+@login_required
+def api_export_pdf():
+    from reportlab.lib.pagesizes import landscape, A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet
+
+    medicines = Medicine.query.filter(Medicine.status != 'Deleted').order_by(Medicine.date_added.desc()).all()
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
+    styles = getSampleStyleSheet()
+    elements = []
+
+    elements.append(Paragraph('MediSync - Medicine Inventory Report', styles['Title']))
+    elements.append(Paragraph(f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M")}', styles['Normal']))
+    elements.append(Spacer(1, 0.3 * inch))
+
+    headers = ['Stock #', 'Article', 'Dosage', 'Unit', 'Qty', 'Category', 'Exp. Date', 'Days', 'Status']
+    data = [headers]
+    for m in medicines:
+        data.append([
+            m.stock_number, m.article_name, m.description_dosage or '', m.unit_of_measurement,
+            str(m.quantity), m.category or '',
+            m.expiration_date.strftime('%Y-%m-%d') if m.expiration_date else '',
+            str(m.to_dict().get('days_remaining')) if m.to_dict().get('days_remaining') is not None else '-',
+            m.status
+        ])
+
+    table = Table(data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#5CB9A4')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    elements.append(table)
+    doc.build(elements)
+    buffer.seek(0)
+    return send_file(
+        buffer, mimetype='application/pdf', as_attachment=True,
+        download_name=f'medisync_inventory_{date.today().isoformat()}.pdf'
+    )
+
+
+# dipensing api
+@app.route('/api/dispense', methods=['POST'])
+@login_required
+def api_dispense():
+    data = request.get_json()
+    
+    article_name = data.get('article_name')
+    if not article_name:
+        return jsonify({'error': 'Article name is required.'}), 400
+
+    batches = Medicine.query.filter(
+        Medicine.article_name == article_name,
+        Medicine.status.in_(['Active', 'Near Expiry'])
+    ).order_by(Medicine.expiration_date.asc().nulls_last(), Medicine.date_added.asc()).all()
+
+    if not batches:
+        return jsonify({'error': 'Medicine not found or out of stock.'}), 404
+
+    total_stock = sum(b.quantity for b in batches)
+    qty = int(data.get('quantity', 0))
+    if qty <= 0:
+        return jsonify({'error': 'Invalid quantity.'}), 400
+
+    center_id = data.get('center_id') or None
+    primary_med = batches[0]  # used for queueing remaining amounts
+
+    # check stock - if queued qty >= total stock, can't fulfill (needs to be less than total stock)
+    if total_stock == 0:
+        return jsonify({'error': f'No stock available for {article_name}.'}), 400
+
+    if total_stock <= qty:
+        confirm_action = data.get('confirm_action')
+        
+        if not confirm_action:
+            half_qty = total_stock // 2
+            queue_qty = qty - half_qty
+            return jsonify({
+                'requires_confirmation': True,
+                'message': f'Stock is insufficient. You requested {qty}, but only {total_stock} available. Dispense half ({half_qty}) and queue or cancel the remaining {queue_qty}?'
+            }), 200
+
+        if confirm_action == 'queue_remaining':
+            dispense_qty = min(total_stock // 2, total_stock)
+            queue_qty = qty - dispense_qty
+
+            if dispense_qty > 0:
+                remaining_to_dispense = dispense_qty
+                for b in batches:
+                    if remaining_to_dispense <= 0: break
+                    if b.quantity <= 0: continue
+                    deduct = min(remaining_to_dispense, b.quantity)
+                    b.quantity -= deduct
+                    remaining_to_dispense -= deduct
+                    
+                    disp = Dispensing(
+                        dispenser_name=data.get('dispenser_name', ''),
+                        medicine_id=b.id,
+                        recipient_name=data.get('recipient_name', ''),
+                        recipient_contact=data.get('recipient_contact', ''),
+                        center_id=center_id,
+                        quantity_dispensed=deduct,
+                        remarks=(data.get('remarks', '') + ' (Partial dispense)').strip()
+                    )
+                    db.session.add(disp)
+                    db.session.commit()
+                    log_activity('Dispense', f'Partially dispensed {deduct}x {b.article_name} to {disp.recipient_name}')
+                    add_notification(f'Medicine partially dispensed: {deduct}x {b.article_name}', 'info', disp.id, 'dispensing')
+
+            if queue_qty > 0:
+                q = RequestQueue(
+                    dispenser_name=data.get('dispenser_name', ''),
+                    medicine_id=primary_med.id,
+                    recipient_name=data.get('recipient_name', ''),
+                    recipient_contact=data.get('recipient_contact', ''),
+                    center_id=center_id,
+                    quantity_requested=queue_qty,
+                    priority=0,
+                    status='Pending'
+                )
+                db.session.add(q)
+                db.session.commit()
+                add_notification(f'Insufficient stock for {article_name}. Remaining {queue_qty} queued.', 'warning', q.id, 'queue')
+                log_activity('Dispense', f'Queued remaining request for {article_name} (qty: {queue_qty}) - insufficient stock')
+
+            return jsonify({'queued': True, 'message': f'Dispensed {dispense_qty} and queued {queue_qty}.'}), 200
+
+        elif confirm_action == 'cancel_remaining':
+            dispense_qty = min(total_stock // 2, total_stock)
+
+            if dispense_qty > 0:
+                remaining_to_dispense = dispense_qty
+                for b in batches:
+                    if remaining_to_dispense <= 0: break
+                    if b.quantity <= 0: continue
+                    deduct = min(remaining_to_dispense, b.quantity)
+                    b.quantity -= deduct
+                    remaining_to_dispense -= deduct
+                    
+                    disp = Dispensing(
+                        dispenser_name=data.get('dispenser_name', ''),
+                        medicine_id=b.id,
+                        recipient_name=data.get('recipient_name', ''),
+                        recipient_contact=data.get('recipient_contact', ''),
+                        center_id=center_id,
+                        quantity_dispensed=deduct,
+                        remarks=(data.get('remarks', '') + ' (Partial dispense, remaining cancelled)').strip()
+                    )
+                    db.session.add(disp)
+                    db.session.commit()
+                    log_activity('Dispense', f'Partially dispensed {deduct}x {b.article_name} to {disp.recipient_name}. Remaining cancelled.')
+                    add_notification(f'Medicine partially dispensed: {deduct}x {b.article_name}', 'info', disp.id, 'dispensing')
+
+            return jsonify({'queued': False, 'message': f'Dispensed {dispense_qty} and cancelled remaining.'}), 200
+
+        elif confirm_action == 'queue_all':
+            q = RequestQueue(
+                dispenser_name=data.get('dispenser_name', ''),
+                medicine_id=primary_med.id,
+                recipient_name=data.get('recipient_name', ''),
+                recipient_contact=data.get('recipient_contact', ''),
+                center_id=center_id,
+                quantity_requested=qty,
+                priority=0,
+                status='Pending'
+            )
+            db.session.add(q)
+            db.session.commit()
+            add_notification(f'Request for {article_name} (qty: {qty}) queued entirely due to user choice.', 'warning', q.id, 'queue')
+            log_activity('Dispense', f'Queued entire request for {article_name} (qty: {qty}) - insufficient stock')
+            return jsonify({'queued': True, 'message': f'Total {qty} request have been queued.'}), 200
+
+        else:
+            return jsonify({'error': 'Invalid confirmation action.'}), 400
+
+    # dispense (full)
+    remaining_qty = qty
+    for b in batches:
+        if remaining_qty <= 0: break
+        if b.quantity <= 0: continue
+        deduct = min(remaining_qty, b.quantity)
+        b.quantity -= deduct
+        remaining_qty -= deduct
+        
+        disp = Dispensing(
+            dispenser_name=data.get('dispenser_name', ''),
+            medicine_id=b.id,
+            recipient_name=data.get('recipient_name', ''),
+            recipient_contact=data.get('recipient_contact', ''),
+            center_id=center_id,
+            quantity_dispensed=deduct,
+            remarks=data.get('remarks', '')
+        )
+        db.session.add(disp)
+        
+    db.session.commit()
+    log_activity('Dispense', f'Dispensed {qty}x {article_name} to {data.get("recipient_name")}')
+    add_notification(f'Medicine dispensed: {qty}x {article_name} to {data.get("recipient_name")}', 'info', disp.id, 'dispensing')
+    return jsonify({'queued': False, 'message': 'Medicine dispensed successfully'}), 201
+
+
+@app.route('/api/dispense/today')
+@login_required
+def api_dispense_today():
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    items = Dispensing.query.filter(Dispensing.date_time >= today_start).order_by(Dispensing.date_time.desc()).all()
+    return jsonify([d.to_dict() for d in items])
+
+
+@app.route('/api/dispense/history')
+@login_required
+def api_dispense_history():
+    query = Dispensing.query
+
+    search = request.args.get('search', '')
+    if search:
+        query = query.join(Medicine).outerjoin(Center).filter(
+            db.or_(
+                Dispensing.recipient_name.ilike(f'%{search}%'),
+                Medicine.article_name.ilike(f'%{search}%'),
+                Center.name.ilike(f'%{search}%')
+            )
+        )
+
+    date_filter = request.args.get('date', '')
+    if date_filter:
+        try:
+            d = datetime.strptime(date_filter, '%Y-%m-%d').date()
+            query = query.filter(db.func.date(Dispensing.date_time) == d)
+        except ValueError:
+            pass
+
+    items = query.order_by(Dispensing.date_time.desc()).all()
+    return jsonify([d.to_dict() for d in items])
+
+
+@app.route('/api/dispense/<int:disp_id>/receipt')
+@login_required
+def api_dispense_receipt(disp_id):
+    from reportlab.lib.pagesizes import A6
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+
+    disp = Dispensing.query.get_or_404(disp_id)
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A6, topMargin=10*mm, bottomMargin=10*mm, leftMargin=8*mm, rightMargin=8*mm)
+    styles = getSampleStyleSheet()
+    center_style = ParagraphStyle('center', parent=styles['Normal'], alignment=TA_CENTER, fontSize=8)
+    title_style = ParagraphStyle('title_c', parent=styles['Title'], alignment=TA_CENTER, fontSize=12)
+    small = ParagraphStyle('small', parent=styles['Normal'], fontSize=7)
+
+    elements = []
+    elements.append(Paragraph('MediSync', title_style))
+    elements.append(Paragraph('Medicine Dispensing Receipt', center_style))
+    elements.append(Spacer(1, 3*mm))
+    elements.append(HRFlowable(width='100%', thickness=0.5, color=colors.grey))
+    elements.append(Spacer(1, 2*mm))
+
+    info = [
+        ['Receipt #:', str(disp.id)],
+        ['Date/Time:', disp.date_time.strftime('%Y-%m-%d %H:%M') if disp.date_time else ''],
+        ['Dispenser:', disp.dispenser_name],
+        ['Medicine:', disp.medicine.article_name if disp.medicine else ''],
+        ['Stock #:', disp.medicine.stock_number if disp.medicine else ''],
+        ['Quantity:', str(disp.quantity_dispensed)],
+        ['Recipient:', disp.recipient_name],
+        ['Contact:', disp.recipient_contact or ''],
+        ['Center:', disp.center.name if disp.center else 'N/A'],
+    ]
+    t = Table(info, colWidths=[25*mm, 45*mm])
+    t.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 3*mm))
+    elements.append(HRFlowable(width='100%', thickness=0.5, color=colors.grey))
+    elements.append(Spacer(1, 2*mm))
+    elements.append(Paragraph(f'Remarks: {disp.remarks or "N/A"}', small))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return send_file(
+        buffer, mimetype='application/pdf', as_attachment=True,
+        download_name=f'receipt_{disp.id}.pdf'
+    )
+
+
+# queue
+@app.route('/api/queue')
+@login_required
+def api_queue():
+    items = RequestQueue.query.filter_by(status='Pending').order_by(
+        RequestQueue.priority.desc(), RequestQueue.created_at.asc()
+    ).all()
+    return jsonify([q.to_dict() for q in items])
+
+
+@app.route('/api/queue/<int:q_id>/prioritize', methods=['PUT'])
+@login_required
+def api_queue_prioritize(q_id):
+    item = RequestQueue.query.get_or_404(q_id)
+    max_p = db.session.query(db.func.max(RequestQueue.priority)).scalar() or 0
+    item.priority = max_p + 1
+    db.session.commit()
+    log_activity('Edit', f'Prioritized queue item #{q_id} for {item.recipient_name}')
+    return jsonify(item.to_dict())
+
+
+@app.route('/api/queue/<int:q_id>/unprioritize', methods=['PUT'])
+@login_required
+def api_queue_unprioritize(q_id):
+    item = RequestQueue.query.get_or_404(q_id)
+    item.priority = 0
+    db.session.commit()
+    log_activity('Edit', f'Removed priority for queue item #{q_id} for {item.recipient_name}')
+    return jsonify(item.to_dict())
+
+
+@app.route('/api/queue/<int:q_id>/fulfill', methods=['PUT'])
+@login_required
+def api_queue_fulfill(q_id):
+    item = RequestQueue.query.get_or_404(q_id)
+    original_med = Medicine.query.get(item.medicine_id)
+    if not original_med:
+        return jsonify({'error': 'Original medicine not found.'}), 404
+
+    batches = Medicine.query.filter(
+        Medicine.article_name == original_med.article_name,
+        Medicine.status.in_(['Active', 'Near Expiry'])
+    ).order_by(Medicine.expiration_date.asc().nulls_last(), Medicine.date_added.asc()).all()
+
+    total_stock = sum(b.quantity for b in batches)
+
+    # Fulfillment logic: only allowed if quantity_requested is <= half of total_stock
+    limit = total_stock / 2
+    if item.quantity_requested > limit:
+        return jsonify({'error': f'Cannot fulfill: queued quantity ({item.quantity_requested}) must be half or less of the total available stock ({total_stock}). Current limit: {int(limit)}. Please restock first.'}), 400
+
+    if total_stock >= item.quantity_requested:
+        remaining_qty = item.quantity_requested
+        for b in batches:
+            if remaining_qty <= 0: break
+            if b.quantity <= 0: continue
+            deduct = min(remaining_qty, b.quantity)
+            b.quantity -= deduct
+            remaining_qty -= deduct
+            
+            disp = Dispensing(
+                dispenser_name=item.dispenser_name,
+                medicine_id=b.id,
+                recipient_name=item.recipient_name,
+                recipient_contact=item.recipient_contact,
+                center_id=item.center_id,
+                quantity_dispensed=deduct,
+                remarks='Fulfilled from queue'
+            )
+            db.session.add(disp)
+
+        item.status = 'Fulfilled'
+        item.fulfilled_at = datetime.now()
+        db.session.commit()
+        log_activity('Dispense', f'Fulfilled queue request #{q_id}: {item.quantity_requested}x {original_med.article_name} to {item.recipient_name}')
+        return jsonify({'success': True, 'message': 'Queue request fulfilled.'})
+    else:
+        return jsonify({'error': f'Still insufficient stock. Total available: {total_stock}'}), 400
+
+
+# analytics api
+@app.route('/api/analytics/expired')
+@login_required
+def api_analytics_expired():
+    medicines = Medicine.query.filter(
+        Medicine.expiration_date.isnot(None),
+        Medicine.expiration_date <= date.today(),
+        Medicine.status.in_(['Expired', 'Discarded', 'Active', 'Near Expiry'])
+    ).all()
+    return jsonify([m.to_dict() for m in medicines])
+
+
+@app.route('/api/analytics/expiring')
+@login_required
+def api_analytics_expiring():
+    today = date.today()
+    threshold = today + timedelta(days=30)
+    medicines = Medicine.query.filter(
+        Medicine.status.in_(['Active', 'Near Expiry']),
+        Medicine.expiration_date.isnot(None),
+        Medicine.expiration_date > today,
+        Medicine.expiration_date <= threshold
+    ).all()
+    return jsonify([m.to_dict() for m in medicines])
+
+
+@app.route('/api/analytics/status-chart')
+@login_required
+def api_analytics_status_chart():
+    active = Medicine.query.filter_by(status='Active').count()
+    near_expiry = Medicine.query.filter_by(status='Near Expiry').count()
+    expired = Medicine.query.filter_by(status='Expired').count()
+    discarded = Medicine.query.filter_by(status='Discarded').count()
+    dispensed = Dispensing.query.count()
+    return jsonify({
+        'labels': ['Active', 'Near Expiry', 'Expired', 'Discarded', 'Dispensed'],
+        'values': [active, near_expiry, expired, discarded, dispensed],
+        'colors': ['#5CB9A4', '#F4B938', '#FC6F5D', '#9e9e9e', '#2B2B43']
+    })
+
+
+# centers api
+@app.route('/api/centers')
+@login_required
+def api_centers():
+    centers = Center.query.order_by(Center.name.asc()).all()
+    return jsonify([c.to_dict() for c in centers])
+
+
+@app.route('/api/centers', methods=['POST'])
+@login_required
+def api_add_center():
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'error': 'Center name is required.'}), 400
+    existing = Center.query.filter_by(name=name).first()
+    if existing:
+        return jsonify({'error': 'Center already exists.'}), 400
+    c = Center(name=name)
+    db.session.add(c)
+    db.session.commit()
+    log_activity('Add', f'Added center: {name}')
+    return jsonify(c.to_dict()), 201
+
+@app.route('/api/centers/<int:center_id>', methods=['DELETE'])
+@login_required
+def api_delete_center(center_id):
+    c = Center.query.get_or_404(center_id)
+    center_name = c.name
+    
+    for disp in c.dispensings:
+        disp.center_id = None
+    for q in c.queue_items:
+        q.center_id = None
+        
+    db.session.delete(c)
+    db.session.commit()
+    log_activity('Delete', f'Deleted center: {center_name}')
+    return jsonify({'success': True})
+
+
+@app.route('/api/centers/<int:center_id>/transactions')
+@login_required
+def api_center_transactions(center_id):
+    dispensings = Dispensing.query.filter_by(center_id=center_id).order_by(Dispensing.date_time.desc()).all()
+    queued = RequestQueue.query.filter_by(center_id=center_id).order_by(RequestQueue.created_at.desc()).all()
+    return jsonify({
+        'dispensings': [d.to_dict() for d in dispensings],
+        'queued': [q.to_dict() for q in queued]
+    })
+
+
+# recipients api
+@app.route('/api/recipients')
+@login_required
+def api_recipients():
+    search = request.args.get('q', '')
+    center_id = request.args.get('center_id', '')
+    query = Recipient.query
+    if search:
+        query = query.filter(Recipient.name.ilike(f'%{search}%'))
+    if center_id:
+        query = query.filter_by(center_id=int(center_id))
+    recipients = query.order_by(Recipient.name.asc()).all()
+    return jsonify([r.to_dict() for r in recipients])
+
+
+@app.route('/api/recipients', methods=['POST'])
+@login_required
+def api_add_recipient():
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    contact = data.get('contact', '').strip()
+    center_id = data.get('center_id')
+    if not name or not center_id:
+        return jsonify({'error': 'Name and center are required.'}), 400
+    # Check for duplicate in same center
+    existing = Recipient.query.filter_by(name=name, center_id=center_id).first()
+    if existing:
+        return jsonify({'error': f'Recipient "{name}" already exists in this center.'}), 400
+    r = Recipient(name=name, contact=contact, center_id=center_id)
+    db.session.add(r)
+    db.session.commit()
+    log_activity('Add', f'Saved recipient profile: {name}')
+    return jsonify(r.to_dict()), 201
+
+
+@app.route('/api/recipients/<int:r_id>', methods=['DELETE'])
+@login_required
+def api_delete_recipient(r_id):
+    r = Recipient.query.get_or_404(r_id)
+    name = r.name
+    db.session.delete(r)
+    db.session.commit()
+    log_activity('Delete', f'Deleted recipient profile: {name}')
+    return jsonify({'success': True})
+
+
+@app.route('/api/centers/<int:center_id>/recipients')
+@login_required
+def api_center_recipients(center_id):
+    recipients = Recipient.query.filter_by(center_id=center_id).order_by(Recipient.name.asc()).all()
+    return jsonify([r.to_dict() for r in recipients])
+
+
+# autocomplete search apis
+@app.route('/api/medicines/search')
+@login_required
+def api_medicines_search():
+    q = request.args.get('q', '')
+    if not q:
+        return jsonify([])
+    # Get unique article names
+    meds = Medicine.query.filter(
+        Medicine.status.in_(['Active', 'Near Expiry']),
+        Medicine.article_name.ilike(f'%{q}%')
+    ).with_entities(Medicine.article_name).distinct().limit(10).all()
+    return jsonify([m[0] for m in meds])
+
+
+@app.route('/api/recipients/search')
+@login_required
+def api_recipients_search():
+    q = request.args.get('q', '')
+    if not q:
+        return jsonify([])
+    recipients = Recipient.query.filter(
+        Recipient.name.ilike(f'%{q}%')
+    ).limit(15).all()
+    # Include center name in the search results for better identification
+    return jsonify([{
+        'id': r.id,
+        'name': r.name,
+        'contact': r.contact,
+        'center_id': r.center_id,
+        'center_name': r.center.name if r.center else '',
+        'full_display': f"{r.name} ({r.center.name if r.center else 'No Center'})"
+    } for r in recipients])
+
+
+# activity logs api
+@app.route('/api/logs')
+@login_required
+def api_logs():
+    query = ActivityLog.query
+
+    action_filter = request.args.get('action', '')
+    if action_filter:
+        query = query.filter_by(action=action_filter)
+
+    search = request.args.get('search', '')
+    if search:
+        query = query.filter(
+            db.or_(
+                ActivityLog.details.ilike(f'%{search}%'),
+                ActivityLog.performed_by.ilike(f'%{search}%')
+            )
+        )
+
+    recipient = request.args.get('recipient', '')
+    if recipient:
+        query = query.filter(ActivityLog.details.ilike(f'%{recipient}%'))
+
+    center = request.args.get('center', '')
+    if center:
+        query = query.filter(ActivityLog.details.ilike(f'%{center}%'))
+
+    medicine = request.args.get('medicine', '')
+    if medicine:
+        query = query.filter(ActivityLog.details.ilike(f'%{medicine}%'))
+
+    date_from = request.args.get('date_from', '')
+    date_to = request.args.get('date_to', '')
+    
+    if date_from:
+        try:
+            df = datetime.strptime(date_from, '%Y-%m-%d').date()
+            query = query.filter(db.func.date(ActivityLog.timestamp) >= df)
+        except ValueError:
+            pass
+
+    if date_to:
+        try:
+            dt = datetime.strptime(date_to, '%Y-%m-%d').date()
+            query = query.filter(db.func.date(ActivityLog.timestamp) <= dt)
+        except ValueError:
+            pass
+
+    logs = query.order_by(ActivityLog.timestamp.desc()).limit(500).all()
+    return jsonify([l.to_dict() for l in logs])
+
+
+# notifications api
+@app.route('/api/notifications')
+@login_required
+def api_notifications():
+    notifs = Notification.query.order_by(Notification.created_at.desc()).limit(50).all()
+    return jsonify([n.to_dict() for n in notifs])
+
+
+@app.route('/api/notifications/<int:n_id>/read', methods=['PUT'])
+@login_required
+def api_mark_notification_read(n_id):
+    n = Notification.query.get_or_404(n_id)
+    n.is_read = True
+    db.session.commit()
+    return jsonify(n.to_dict())
+
+
+@app.route('/api/notifications/read-all', methods=['PUT'])
+@login_required
+def api_mark_all_read():
+    Notification.query.filter_by(is_read=False).update({'is_read': True})
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+# settings api
+@app.route('/api/settings/profile', methods=['PUT'])
+@login_required
+def api_update_profile():
+    user = User.query.get(session['user_id'])
+    data = request.get_json()
+    if data.get('full_name'):
+        user.full_name = data['full_name']
+    if data.get('username'):
+        existing = User.query.filter(User.username == data['username'], User.id != user.id).first()
+        if existing:
+            return jsonify({'error': 'Username already taken.'}), 400
+        user.username = data['username']
+    if data.get('password'):
+        user.set_password(data['password'])
+    db.session.commit()
+    log_activity('Edit', f'Updated profile for {user.username}')
+    return jsonify(user.to_dict())
+
+
+@app.route('/api/settings/picture', methods=['POST'])
+@login_required
+def api_upload_picture():
+    if 'picture' not in request.files:
+        return jsonify({'error': 'No file uploaded.'}), 400
+    file = request.files['picture']
+    if file.filename == '':
+        return jsonify({'error': 'Empty filename.'}), 400
+    filename = secure_filename(f"profile_{session['user_id']}_{file.filename}")
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+    user = User.query.get(session['user_id'])
+    user.profile_picture = f'/static/uploads/{filename}'
+    db.session.commit()
+    log_activity('Edit', 'Updated profile picture')
+    return jsonify(user.to_dict())
+
+
+# database initialization
+def init_db():
+    db.create_all()
+    if not User.query.first():
+        admin = User(username='admin', full_name='System Administrator')
+        admin.set_password('admin123')
+        db.session.add(admin)
+        db.session.commit()
+        print('  Default admin created (admin / admin123)')
+
+
+if __name__ == '__main__':
+    with app.app_context():
+        init_db()
+    app.run(debug=True, port=5000)

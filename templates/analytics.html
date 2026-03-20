@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+{% block content %}
+<div class="page-title-row">
+    <div>
+        <h1 class="page-title">Analytics Report</h1>
+        <p class="page-subtitle">Expiration reports and medicine status overview</p>
+    </div>
+</div>
+
+<!-- Status Pie Chart -->
+<div class="card" style="margin-bottom:24px;">
+    <div class="card-header"><h3>All Medicine Status Report</h3></div>
+    <div class="card-body">
+        <div class="chart-container">
+            <div class="chart-canvas-wrap">
+                <canvas id="statusChart" width="280" height="280"></canvas>
+            </div>
+            <div class="chart-legend" id="chartLegend"></div>
+        </div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <!-- Expired Medicines -->
+    <div class="card">
+        <div class="card-header">
+            <h3>Expired Medicines</h3>
+            <span class="badge badge-expired" id="expiredCount">0</span>
+        </div>
+        <div class="card-body" style="padding:0;">
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Article/Name</th>
+                            <th>Category</th>
+                            <th>Unit</th>
+                            <th>Qty</th>
+                            <th>Exp. Date</th>
+                            <th>Days</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expiredBody">
+                        <tr class="empty-row"><td colspan="7">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- About to Expire Medicines -->
+    <div class="card">
+        <div class="card-header">
+            <h3>About to Expire</h3>
+            <span class="badge badge-pending" id="expiringCount">0</span>
+        </div>
+        <div class="card-body" style="padding:0;">
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Article/Name</th>
+                            <th>Category</th>
+                            <th>Unit</th>
+                            <th>Qty</th>
+                            <th>Exp. Date</th>
+                            <th>Days Left</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expiringBody">
+                        <tr class="empty-row"><td colspan="7">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/analytics.js') }}"></script>
+{% endblock %}

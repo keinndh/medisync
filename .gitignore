@@ -1,0 +1,8 @@
+# ignore these files and folders
+*.db
+*.sqlite3
+__pycache__/
+*.py[cod]
+venv/
+env/
+.env
