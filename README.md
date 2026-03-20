@@ -1,9 +1,3 @@
-This is a solid, professional structure for a GitHub `README.md`. Since GitHub uses **Markdown**, we can achieve visual hierarchy through different levels of headers and bold text to make it "scannable" for anyone visiting your repository.
-
-Here is the revised version of your **MediSync** documentation with improved formatting:
-
----
-
 # MediSync
 ### **Vitali District Medicine Inventory & Management System**
 
@@ -16,7 +10,7 @@ Managing medicine in a barangay health center requires precision. **MediSync** r
 
 ---
 
-## ✨ Key Features
+## Key Features
 * **Medicine Inventory:** Real-time tracking of stock levels (In/Out).
 * **Categorization:** Automated and manual sorting of medicines (e.g., *Antibiotics, Vitamins, Maintenance*).
 * **PDF Integration:** Tools to extract and migrate medicine lists from official PDF documents directly into the database.
@@ -92,9 +86,7 @@ This project is currently being developed for a specific health center. However,
 
 ---
 
-## 📄 License
+## License
 This project is licensed under the **MIT License** - see the `LICENSE` file for details.
 
 ---
-
-**Would you like me to generate a `requirements.txt` file based on your project structure to make the installation steps work?**
