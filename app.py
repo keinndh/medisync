@@ -40,7 +40,7 @@ with app.app_context():
         db.create_all()
         if not User.query.filter_by(username='admin').first():
             u = User(username='admin', full_name='System Admin')
-            u.set_password('admin123')
+            u.set_password('thisisademoadmin678')
             db.session.add(u)
             db.session.commit()
             print("Successfully initialized fresh database tables and generated admin account.")
@@ -1205,5 +1205,5 @@ def create_tables():
 
 if __name__ == '__main__':
     with app.app_context():
-        init_db()
+        create_tables()
     app.run(debug=True, port=5000)
