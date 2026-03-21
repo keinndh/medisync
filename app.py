@@ -35,6 +35,18 @@ db.init_app(app)
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
 
+with app.app_context():
+    try:
+        db.create_all()
+        if not User.query.filter_by(username='admin').first():
+            u = User(username='admin', full_name='System Admin')
+            u.set_password('admin123')
+            db.session.add(u)
+            db.session.commit()
+            print("Successfully initialized fresh database tables and generated admin account.")
+    except Exception as e:
+        print(f"Database initialization step bypassed or failed: {e}")
+
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(os.path.join(os.path.dirname(__file__), 'static', 'images'), exist_ok=True)
 
