@@ -24,15 +24,22 @@ database_url = os.getenv('DATABASE_URL')
 if database_url and database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///medisync.db'
+if not database_url:
+    raise ValueError("DATABASE_URL is not set!")
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 
 from models import db 
 db.init_app(app)
 
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
+
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(os.path.join(os.path.dirname(__file__), 'static', 'images'), exist_ok=True)
 
-CORS(app)
+# Allow credentials for cross-origin Netlify requests
+CORS(app, supports_credentials=True)
 
 # helpers
 def login_required(f):
@@ -1174,7 +1181,7 @@ def api_upload_picture():
 
 
 # database initialization
-def init_db():
+def create_tables():
     db.create_all()
     if not User.query.first():
         admin = User(username='admin', full_name='System Administrator')
