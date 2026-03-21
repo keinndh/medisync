@@ -3,7 +3,7 @@
     // --- Load Expired ---
     async function loadExpired() {
         try {
-            var res = await fetch('/api/analytics/expired');
+            var res = await fetch(window.API_BASE + '/api/analytics/expired');
             var items = await res.json();
             document.getElementById('expiredCount').textContent = items.length;
             var tbody = document.getElementById('expiredBody');
@@ -24,7 +24,7 @@
     // --- Load About to Expire ---
     async function loadExpiring() {
         try {
-            var res = await fetch('/api/analytics/expiring');
+            var res = await fetch(window.API_BASE + '/api/analytics/expiring');
             var items = await res.json();
             document.getElementById('expiringCount').textContent = items.length;
             var tbody = document.getElementById('expiringBody');
@@ -45,7 +45,7 @@
     // --- Pie Chart ---
     async function loadChart() {
         try {
-            var res = await fetch('/api/analytics/status-chart');
+            var res = await fetch(window.API_BASE + '/api/analytics/status-chart');
             var data = await res.json();
             drawPieChart(data);
         } catch (e) { /* ignore */ }

@@ -5,7 +5,7 @@
     // --- Load Stats ---
     async function loadInvStats() {
         try {
-            var res = await fetch('/api/dashboard/stats');
+            var res = await fetch(window.API_BASE + '/api/dashboard/stats');
             var data = await res.json();
             document.getElementById('invStatTotal').textContent = data.total_items;
             document.getElementById('invStatExpiring').textContent = data.about_to_expire;
@@ -18,7 +18,7 @@
     // --- Load Categories (for autocomplete) ---
     async function loadCategories() {
         try {
-            var res = await fetch('/api/medicines/categories');
+            var res = await fetch(window.API_BASE + '/api/medicines/categories');
             var cats = await res.json();
             
             // Setup filter autocomplete
@@ -85,7 +85,7 @@
         }
 
         try {
-            var res = await fetch('/api/medicines?' + params.toString());
+            var res = await fetch(window.API_BASE + '/api/medicines?' + params.toString());
             allMedicines = await res.json();
             renderTable();
         } catch (e) {
@@ -212,7 +212,7 @@
         try {
             var url = editId ? '/api/medicines/' + editId : '/api/medicines';
             var method = editId ? 'PUT' : 'POST';
-            var res = await fetch(url, {
+            var res = await fetch(window.API_BASE + url, {
                 method: method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -301,7 +301,7 @@
         }
 
         try {
-            var res = await fetch('/api/medicines/' + medId + '/restock', {
+            var res = await fetch(window.API_BASE + '/api/medicines/' + medId + '/restock', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ quantity: qty, expiration_date: expDate })
@@ -331,7 +331,7 @@
         var reason = document.getElementById('discardReason').value.trim();
         if (!reason) { showToast('Please provide a reason.', 'error'); return; }
         try {
-            var res = await fetch('/api/medicines/' + id + '/discard', {
+            var res = await fetch(window.API_BASE + '/api/medicines/' + id + '/discard', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ reason: reason })
@@ -356,7 +356,7 @@
         var reason = document.getElementById('deleteReason').value.trim();
         if (!reason) { showToast('Please provide a reason.', 'error'); return; }
         try {
-            var res = await fetch('/api/medicines/' + id, {
+            var res = await fetch(window.API_BASE + '/api/medicines/' + id, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ reason: reason })
@@ -385,7 +385,7 @@
         };
         document.getElementById('invBlockModalTitle').textContent = titles[type] || 'Items';
         try {
-            var res = await fetch('/api/dashboard/block/' + type);
+            var res = await fetch(window.API_BASE + '/api/dashboard/block/' + type);
             var items = await res.json();
             var thead = document.getElementById('invBlockTableHead');
             var tbody = document.getElementById('invBlockTableBody');

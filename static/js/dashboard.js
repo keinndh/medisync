@@ -35,7 +35,7 @@
     // --- Load Stats ---
     async function loadStats() {
         try {
-            var res = await fetch('/api/dashboard/stats');
+            var res = await fetch(window.API_BASE + '/api/dashboard/stats');
             var data = await res.json();
             document.getElementById('statTotal').textContent = data.total_items;
             document.getElementById('statExpiring').textContent = data.about_to_expire;
@@ -61,7 +61,7 @@
         document.getElementById('blockModalTitle').textContent = titles[type] || 'Items';
 
         try {
-            var res = await fetch('/api/dashboard/block/' + type);
+            var res = await fetch(window.API_BASE + '/api/dashboard/block/' + type);
             var items = await res.json();
             var thead = document.getElementById('blockTableHead');
             var tbody = document.getElementById('blockTableBody');
@@ -89,7 +89,7 @@
     // --- Recently Added Table ---
     async function loadRecent() {
         try {
-            var res = await fetch('/api/dashboard/recent');
+            var res = await fetch(window.API_BASE + '/api/dashboard/recent');
             var items = await res.json();
             var tbody = document.getElementById('recentBody');
             if (!items.length) {

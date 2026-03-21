@@ -3,6 +3,11 @@
    Handles: real-time clock, notifications, logout, toasts, modals
    =================================================================== */
 
+// --- Global API Configuration ---
+window.API_BASE = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost')
+  ? 'http://127.0.0.1:5000'
+  : 'https://medisync-yvp7.onrender.com';
+
 // --- Real-time Clock ---
 function updateClock() {
   const now = new Date();
@@ -30,7 +35,7 @@ updateClock();
 // --- Load User Info ---
 async function loadUserInfo() {
   try {
-    const res = await fetch("/api/me");
+    const res = await fetch(window.API_BASE + "/api/me");
     if (!res.ok) return;
     const user = await res.json();
     const nameEl = document.getElementById("headerUserName");
@@ -51,7 +56,7 @@ let notifOpen = false;
 
 async function loadNotifications() {
   try {
-    const res = await fetch("/api/notifications");
+    const res = await fetch(window.API_BASE + "/api/notifications");
     if (!res.ok) return;
     const notifs = await res.json();
     const badge = document.getElementById("notifBadge");
@@ -129,7 +134,7 @@ if (notifBtn && notifPopup) {
 const markAllBtn = document.getElementById("markAllReadBtn");
 if (markAllBtn) {
   markAllBtn.addEventListener("click", async function () {
-    await fetch("/api/notifications/read-all", { method: "PUT" });
+    await fetch(window.API_BASE + "/api/notifications/read-all", { method: "PUT" });
     loadNotifications();
   });
 }
@@ -155,7 +160,7 @@ if (logoutNo)
   });
 if (logoutYes) {
   logoutYes.addEventListener("click", async function () {
-    await fetch("/api/logout", { method: "POST" });
+    await fetch(window.API_BASE + "/api/logout", { method: "POST" });
     window.location.href = "/login";
   });
 }

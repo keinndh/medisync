@@ -1,4 +1,8 @@
 /* MediSync - Login Page JS */
+window.API_BASE = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost')
+  ? 'http://127.0.0.1:5000'
+  : 'https://medisync-yvp7.onrender.com';
+
 (function () {
     var form = document.getElementById('loginForm');
     var errEl = document.getElementById('loginError');
@@ -21,7 +25,7 @@
         btn.textContent = 'Signing in...';
 
         try {
-            var res = await fetch('/api/login', {
+            var res = await fetch(window.API_BASE + '/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: username, password: password })

@@ -68,7 +68,7 @@
             }
             medDebounce = setTimeout(async () => {
                 try {
-                    const res = await fetch('/api/medicines/search?q=' + encodeURIComponent(q));
+                    const res = await fetch(window.API_BASE + '/api/medicines/search?q=' + encodeURIComponent(q));
                     const items = await res.json();
                     if (!items.length) {
                         medicineDropdown.classList.remove('show');
@@ -120,7 +120,7 @@
         }
 
         try {
-            const res = await fetch('/api/logs?' + params.toString());
+            const res = await fetch(window.API_BASE + '/api/logs?' + params.toString());
             const logs = await res.json();
             const tbody = document.getElementById('logsBody');
             

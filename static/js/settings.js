@@ -3,7 +3,7 @@
     // --- Load current profile ---
     async function loadProfile() {
         try {
-            var res = await fetch('/api/me');
+            var res = await fetch(window.API_BASE + '/api/me');
             var user = await res.json();
             document.getElementById('settingsName').value = user.full_name || '';
             document.getElementById('settingsUsername').value = user.username || '';
@@ -29,7 +29,7 @@
         if (pw) payload.password = pw;
 
         try {
-            var res = await fetch('/api/settings/profile', {
+            var res = await fetch(window.API_BASE + '/api/settings/profile', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -53,7 +53,7 @@
         var fd = new FormData();
         fd.append('picture', file);
         try {
-            var res = await fetch('/api/settings/picture', { method: 'POST', body: fd });
+            var res = await fetch(window.API_BASE + '/api/settings/picture', { method: 'POST', body: fd });
             var data = await res.json();
             if (res.ok) {
                 showToast('Profile picture updated.');

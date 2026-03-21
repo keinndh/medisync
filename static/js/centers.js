@@ -53,7 +53,7 @@
         if (!confirm('Delete ' + checked.length + ' selected center(s)?')) return;
         for (var i = 0; i < checked.length; i++) {
             var id = checked[i].dataset.id;
-            await fetch('/api/centers/' + id, { method: 'DELETE' });
+            await fetch(window.API_BASE + '/api/centers/' + id, { method: 'DELETE' });
         }
         showToast('Selected centers deleted.');
         exitDeleteMode();
@@ -71,7 +71,7 @@
         var name = document.getElementById('centerName').value.trim();
         if (!name) { showToast('Enter center name.', 'error'); return; }
         try {
-            var res = await fetch('/api/centers', {
+            var res = await fetch(window.API_BASE + '/api/centers', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: name })
@@ -89,7 +89,7 @@
     // --- Load Centers ---
     async function loadCenters() {
         try {
-            var res = await fetch('/api/centers');
+            var res = await fetch(window.API_BASE + '/api/centers');
             var centers = await res.json();
             var container = document.getElementById('centersList');
             if (!centers.length) {
@@ -119,7 +119,7 @@
     window.deleteCenter = async function (id, name) {
         if (!confirm('Are you sure you want to delete center "' + name + '"?')) return;
         try {
-            var res = await fetch('/api/centers/' + id, { method: 'DELETE' });
+            var res = await fetch(window.API_BASE + '/api/centers/' + id, { method: 'DELETE' });
             if (res.ok) {
                 showToast('Center deleted successfully.');
                 loadCenters();
@@ -141,7 +141,7 @@
         body.classList.add('show');
 
         try {
-            var res = await fetch('/api/centers/' + centerId + '/transactions');
+            var res = await fetch(window.API_BASE + '/api/centers/' + centerId + '/transactions');
             var data = await res.json();
             var html = '';
             if (data.dispensings.length) {
@@ -188,7 +188,7 @@
 
     async function loadRecipients(centerId) {
         try {
-            var res = await fetch('/api/centers/' + centerId + '/recipients');
+            var res = await fetch(window.API_BASE + '/api/centers/' + centerId + '/recipients');
             var recipients = await res.json();
             var container = document.getElementById('recipientsCardGrid');
             if (!recipients.length) {
@@ -249,7 +249,7 @@
         if (!checked.length) { showToast('No recipients selected.', 'error'); return; }
         if (!confirm('Delete ' + checked.length + ' selected recipient(s)?')) return;
         for (var i = 0; i < checked.length; i++) {
-            await fetch('/api/recipients/' + checked[i].dataset.id, { method: 'DELETE' });
+            await fetch(window.API_BASE + '/api/recipients/' + checked[i].dataset.id, { method: 'DELETE' });
         }
         showToast('Selected recipients deleted.');
         await loadRecipients(currentCenterId);

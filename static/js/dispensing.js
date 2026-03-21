@@ -55,7 +55,7 @@
     // --- Load medicines for autocomplete ---
     async function loadMedicineNames() {
         try {
-            var res = await fetch('/api/medicines');
+            var res = await fetch(window.API_BASE + '/api/medicines');
             var allMeds = await res.json();
             var meds = allMeds.filter(function (m) { return m.status === 'Active' || m.status === 'Near Expiry'; });
             var grouped = {};
@@ -95,7 +95,7 @@
     // --- Load centers for select ---
     async function loadCenterOptions() {
         try {
-            var res = await fetch('/api/centers');
+            var res = await fetch(window.API_BASE + '/api/centers');
             allCenters = await res.json();
             var sel = document.getElementById('dispCenter');
             sel.innerHTML = '<option value="">Select center...</option>';
@@ -110,7 +110,7 @@
 
     // --- Recipient autocomplete ---
     function searchRecipients(q, cb) {
-        fetch('/api/recipients/search?q=' + encodeURIComponent(q))
+        fetch(window.API_BASE + '/api/recipients/search?q=' + encodeURIComponent(q))
             .then(function (r) { return r.json(); })
             .then(function (items) {
                 cb(items.map(function (r) {
@@ -181,7 +181,7 @@
         var centerId = document.getElementById('dispCenter').value;
         if (!name || !centerId) { showToast('Recipient name and center are required.', 'error'); return; }
         try {
-            var res = await fetch('/api/recipients', {
+            var res = await fetch(window.API_BASE + '/api/recipients', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: name, contact: contact, center_id: parseInt(centerId) })
@@ -231,7 +231,7 @@
 
     async function submitDispense(payload) {
         try {
-            var res = await fetch('/api/dispense', {
+            var res = await fetch(window.API_BASE + '/api/dispense', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -287,7 +287,7 @@
     // --- Request Queue ---
     async function loadQueue() {
         try {
-            var res = await fetch('/api/queue');
+            var res = await fetch(window.API_BASE + '/api/queue');
             var items = await res.json();
             var container = document.getElementById('queueList');
             document.getElementById('queueCount').textContent = items.length + ' pending';
@@ -317,7 +317,7 @@
 
     // --- Queue Detail Modal ---
     window.showQueueDetail = function (id) {
-        fetch('/api/queue')
+        fetch(window.API_BASE + '/api/queue')
             .then(function (r) { return r.json(); })
             .then(function (items) {
                 var q = items.find(function (i) { return i.id === id; });
@@ -361,7 +361,7 @@
 
     document.getElementById('queueDetailPrioritize').addEventListener('click', function () {
         var id = this.dataset.id;
-        fetch('/api/queue/' + id + '/prioritize', { method: 'PUT' })
+        fetch(window.API_BASE + '/api/queue/' + id + '/prioritize', { method: 'PUT' })
             .then(function (r) { return r.json(); })
             .then(function () {
                 showToast('Request prioritized.');
@@ -372,7 +372,7 @@
 
     document.getElementById('queueDetailUnprioritize').addEventListener('click', function () {
         var id = this.dataset.id;
-        fetch('/api/queue/' + id + '/unprioritize', { method: 'PUT' })
+        fetch(window.API_BASE + '/api/queue/' + id + '/unprioritize', { method: 'PUT' })
             .then(function (r) { return r.json(); })
             .then(function () {
                 showToast('Priority removed.');
@@ -387,7 +387,7 @@
 
     window.prioritizeQueue = async function (id) {
         try {
-            await fetch('/api/queue/' + id + '/prioritize', { method: 'PUT' });
+            await fetch(window.API_BASE + '/api/queue/' + id + '/prioritize', { method: 'PUT' });
             showToast('Request prioritized.');
             loadQueue();
         } catch (e) { showToast('Failed to prioritize.', 'error'); }
@@ -395,7 +395,7 @@
 
     window.fulfillQueue = async function (id) {
         try {
-            var res = await fetch('/api/queue/' + id + '/fulfill', { method: 'PUT' });
+            var res = await fetch(window.API_BASE + '/api/queue/' + id + '/fulfill', { method: 'PUT' });
             var data = await res.json();
             if (res.ok) {
                 showToast('Request fulfilled and dispensed.');
@@ -411,7 +411,7 @@
     // --- Today's Distribution ---
     async function loadToday() {
         try {
-            var res = await fetch('/api/dispense/today');
+            var res = await fetch(window.API_BASE + '/api/dispense/today');
             var items = await res.json();
             var tbody = document.getElementById('todayBody');
             if (!items.length) {
@@ -453,7 +453,7 @@
         if (date) params.set('date', date);
 
         try {
-            var res = await fetch('/api/dispense/history?' + params.toString());
+            var res = await fetch(window.API_BASE + '/api/dispense/history?' + params.toString());
             var items = await res.json();
             var tbody = document.getElementById('historyBody');
             if (!items.length) {
@@ -481,7 +481,7 @@
         var name = document.getElementById('quickCenterName').value.trim();
         if (!name) { showToast('Enter center name.', 'error'); return; }
         try {
-            var res = await fetch('/api/centers', {
+            var res = await fetch(window.API_BASE + '/api/centers', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: name })
