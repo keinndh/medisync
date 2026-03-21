@@ -219,7 +219,7 @@ class Notification(db.Model):
 class MedicineCategory(db.Model):
     __tablename__ = 'medicine_categories'
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), unique=True, nullable=False)
+    name = db.Column(db.String(500), unique=True, nullable=False)
 
     def to_dict(self):
         return {'id': self.id, 'name': self.name}
