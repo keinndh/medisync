@@ -1,7 +1,7 @@
 /* MediSync - Login Page JS */
 window.API_BASE = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost')
   ? 'http://127.0.0.1:5000'
-  : 'https://medisync-yvp7.onrender.com';
+  : 'https://medisyncinventory.onrender.com';
 
 (function () {
     var form = document.getElementById('loginForm');
