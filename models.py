@@ -38,7 +38,7 @@ class Medicine(db.Model):
     description_dosage = db.Column(db.String(300), default='')
     unit_of_measurement = db.Column(db.String(50), nullable=False)
     quantity = db.Column(db.Integer, nullable=False, default=0)
-    category = db.Column(db.String(100), default='')
+    category = db.Column(db.String(500), default='')
     remarks = db.Column(db.Text, default='')
     expiration_date = db.Column(db.Date, nullable=True)
     date_added = db.Column(db.DateTime, default=datetime.now)
