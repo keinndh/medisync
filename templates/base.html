@@ -33,13 +33,7 @@
               <div class="brand-subtitle">Medicine Inventory Management System</div>
               <div class="brand-collapsed-title" style="display: none; font-size: 1.5rem; font-weight: 800; color: #fff;">M</div>
             </div>
-            <button id="sidebarToggle" class="btn btn-ghost sidebar-toggle" title="Toggle Sidebar">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-              </svg>
-            </button>
+            <!-- Toggle moved to header -->
           </div>
         </div>
         <div class="sidebar-nav">
@@ -153,25 +147,27 @@
             <img src="static/images/bg1.jpg" alt="Main Background" />
           </div>
           <div class="header-inner">
+            <!-- Hamburger: mobile only -->
             <div class="hamburger" id="hamburgerMenu">
               <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </div>
-  
+            <!-- Sidebar collapse toggle: desktop only -->
+            <button id="sidebarToggle" class="btn btn-ghost sidebar-toggle header-sidebar-toggle" title="Toggle Sidebar">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            </button>
             <div class="header-logo">
               <img src="static/images/logo4.png" alt="Logo" />
             </div>
             <div class="header-center">
               <div class="header-line1">MediSync Inventory System</div>
               <div class="header-line2">Vitali Health District</div>
-              <div class="header-line3">
-                Mialim Vitali, Zamboanga City
-              </div>
+              <div class="header-line3">Mialim Vitali, Zamboanga City</div>
             </div>
             <div class="header-right">
-              <div class="header-datetime">
-                <div class="hdate" id="headerDate"></div>
-                <div class="htime" id="headerTime"></div>
-              </div>
               <div class="header-profile">
                 <div class="header-profile-pic" id="headerProfilePic">
                   <svg viewBox="0 0 24 24">
@@ -179,21 +175,20 @@
                     <circle cx="12" cy="7" r="4" />
                   </svg>
                 </div>
-                <span class="header-profile-name" id="headerUserName"
-                  >Admin</span
-                >
+                <div class="header-profile-info">
+                  <span class="header-profile-name" id="headerUserName">Admin</span>
+                  <div class="header-datetime">
+                    <div class="hdate" id="headerDate"></div>
+                    <div class="htime" id="headerTime"></div>
+                  </div>
+                </div>
               </div>
               <button class="notification-btn" id="notifBtn" type="button">
                 <svg viewBox="0 0 24 24">
                   <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                   <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                 </svg>
-                <span
-                  class="notification-badge"
-                  id="notifBadge"
-                  style="display: none"
-                  >0</span
-                >
+                <span class="notification-badge" id="notifBadge" style="display: none">0</span>
               </button>
             </div>
           </div>

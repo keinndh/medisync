@@ -2206,3 +2206,320 @@ select.form-control {
     display: block;
   }
 }
+
+
+
+/* ===================================================================
+   TARGETED FIXES — Inventory buttons, Login eye, Header, Sidebar
+   =================================================================== */
+
+/* --- Password eye toggle --- */
+.password-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.password-input-wrap .form-control {
+  padding-right: 48px;
+}
+.password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: var(--transition);
+}
+.password-toggle:hover { color: var(--primary); }
+.password-toggle svg { width: 18px; height: 18px; }
+
+/* --- Header: sidebar toggle button in header (desktop) --- */
+.header-sidebar-toggle {
+  display: flex !important;
+  color: rgba(255,255,255,0.8) !important;
+  padding: 8px !important;
+  border-radius: 8px !important;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+.header-sidebar-toggle:hover {
+  background: rgba(255,255,255,0.15) !important;
+  color: #fff !important;
+}
+.header-sidebar-toggle svg {
+  stroke: currentColor !important;
+}
+
+/* Hide hamburger on desktop (>768px), hide desktop toggle on mobile */
+@media (min-width: 769px) {
+  .hamburger { display: none !important; }
+  .header-sidebar-toggle { display: flex !important; }
+}
+@media (max-width: 768px) {
+  .header-sidebar-toggle { display: none !important; }
+  .hamburger { display: flex !important; }
+}
+
+/* --- Header: name above time (desktop) --- */
+.header-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-profile-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.header-profile-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  color: #fff;
+  line-height: 1.2;
+}
+.header-datetime {
+  text-align: left;
+}
+.header-datetime .hdate {
+  font-size: 0.72rem;
+  font-weight: 500;
+  opacity: 0.75;
+  line-height: 1.2;
+}
+.header-datetime .htime {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--primary-light);
+  line-height: 1.2;
+}
+
+/* --- Header: equal padding top/bottom --- */
+.header-inner {
+  padding: 14px 20px !important;
+  gap: 12px;
+  min-height: var(--header-height);
+}
+
+/* --- Header center: visible on desktop, hidden on mobile --- */
+.header-center { display: block; }
+@media (max-width: 768px) {
+  .header-center { display: none; }
+  /* On mobile: show compact name + time inline */
+  .header-profile-info { display: flex; flex-direction: column; }
+  .header-profile-name { font-size: 0.8rem; }
+  .header-datetime .hdate { display: none; } /* too small, skip date on mobile */
+  .header-datetime .htime { font-size: 0.8rem; }
+  .header-inner { padding: 10px 12px !important; }
+  .header-logo { width: 36px; height: 36px; }
+}
+
+/* --- Sidebar: always show nav text labels, never collapse on mobile --- */
+@media (max-width: 768px) {
+  /* Sidebar open state: show full labels */
+  .sidebar.mobile-open .nav-text { display: inline !important; }
+  .sidebar.mobile-open .sidebar-brand .brand-title { display: block !important; }
+  .sidebar.mobile-open .sidebar-brand .brand-subtitle { display: block !important; }
+  .sidebar.mobile-open .sidebar-nav a { justify-content: flex-start !important; padding: 14px 24px !important; }
+  .sidebar.mobile-open .sidebar-brand { padding: 20px 24px !important; text-align: left !important; }
+  .sidebar.mobile-open .sidebar-brand-inner { justify-content: flex-start !important; flex-direction: row !important; }
+  .sidebar.mobile-open .sidebar-footer a { justify-content: flex-start !important; padding: 16px 20px !important; }
+  .sidebar.mobile-open .sidebar-footer a .nav-text { display: inline !important; }
+
+  /* Collapsed class has no effect on mobile */
+  .app-layout.collapsed .sidebar { width: 280px !important; }
+  .app-layout.collapsed .sidebar .brand-title,
+  .app-layout.collapsed .sidebar .brand-subtitle,
+  .app-layout.collapsed .sidebar .nav-text { display: block !important; }
+}
+
+/* Desktop collapsed state: keep working */
+@media (min-width: 769px) {
+  .app-layout.collapsed .sidebar-brand .brand-title,
+  .app-layout.collapsed .sidebar-brand .brand-subtitle,
+  .app-layout.collapsed .sidebar-nav a .nav-text,
+  .app-layout.collapsed .sidebar-footer a .nav-text { display: none; }
+  .app-layout.collapsed .sidebar { width: 72px; }
+  .app-layout.collapsed .main-content { margin-left: 72px; }
+  .app-layout.collapsed .sidebar-nav a { justify-content: center; padding: 14px 0; }
+  .app-layout.collapsed .sidebar-brand { padding: 16px 8px; text-align: center; }
+  .app-layout.collapsed .sidebar-brand-inner { flex-direction: column; align-items: center; }
+  .app-layout.collapsed .sidebar-footer a { justify-content: center; padding: 16px 0; }
+}
+
+/* --- Inventory page: fix button row overflow on mobile --- */
+@media (max-width: 768px) {
+  /* Page title row buttons: wrap cleanly */
+  .page-title-row > div:last-child {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+  }
+  .page-title-row > div:last-child .btn,
+  .page-title-row > div:last-child .export-btn-wrap {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
+  .page-title-row > div:last-child .btn-primary {
+    flex: 1 1 100%; /* Add Medicine full width */
+  }
+  .page-title-row > div:last-child .export-btn-wrap .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  /* Ensure no button is ever clipped */
+  .page-content {
+    overflow-x: hidden;
+    padding: 14px 14px 32px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-title-row > div:last-child .btn,
+  .page-title-row > div:last-child .export-btn-wrap {
+    flex: 1 1 100%; /* All buttons full width on very small phones */
+  }
+}
+
+
+
+/* ===================================================================
+   FINAL FIXES — page-title-actions, sidebar text, header spacing
+   =================================================================== */
+
+/* --- Page title action buttons container --- */
+.page-title-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+  .page-title-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  /* Export wrapper takes half, Restock takes half */
+  .page-title-actions .export-btn-wrap,
+  .page-title-actions .btn-success {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
+  .page-title-actions .export-btn-wrap .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  /* Add Medicine always full width */
+  .page-title-actions .btn-primary {
+    flex: 1 1 100%;
+    width: 100%;
+    justify-content: center;
+  }
+  /* Generic: any btn in actions that's alone gets full width */
+  .page-title-actions > .btn {
+    flex: 1 1 calc(50% - 4px);
+  }
+}
+
+@media (max-width: 380px) {
+  .page-title-actions .export-btn-wrap,
+  .page-title-actions .btn-success,
+  .page-title-actions > .btn {
+    flex: 1 1 100%;
+  }
+}
+
+/* --- Sidebar: always show labels when open on mobile --- */
+/* Force nav text visible regardless of collapsed class */
+@media (max-width: 768px) {
+  .sidebar .nav-text { display: inline !important; }
+  .sidebar .brand-title { display: block !important; }
+  .sidebar .brand-subtitle { display: block !important; }
+  .sidebar .sidebar-nav a {
+    justify-content: flex-start !important;
+    padding: 14px 24px !important;
+  }
+  .sidebar .sidebar-brand {
+    padding: 20px 24px !important;
+    text-align: left !important;
+  }
+  .sidebar .sidebar-brand-inner {
+    justify-content: flex-start !important;
+    flex-direction: row !important;
+    align-items: center;
+  }
+  .sidebar .sidebar-footer a {
+    justify-content: flex-start !important;
+    padding: 16px 20px !important;
+  }
+  .sidebar .sidebar-footer a .nav-text { display: inline !important; }
+}
+
+/* --- Header sidebar toggle: visible on desktop only --- */
+.header-sidebar-toggle { display: none; }
+@media (min-width: 769px) {
+  .header-sidebar-toggle { display: flex !important; }
+}
+
+/* --- Header profile info: name on top of datetime --- */
+.header-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-profile-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1;
+  gap: 3px;
+}
+.header-profile-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #fff;
+  white-space: nowrap;
+}
+.header-datetime {
+  text-align: left;
+}
+.header-datetime .hdate {
+  font-size: 0.7rem;
+  font-weight: 500;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+.header-datetime .htime {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--primary-light);
+  white-space: nowrap;
+}
+
+/* Show header center title on desktop */
+@media (min-width: 769px) {
+  .header-center { display: block !important; }
+}
+
+/* Mobile header: compact, show name + time, hide date */
+@media (max-width: 768px) {
+  .header-center { display: none !important; }
+  .header-profile-info { display: flex !important; }
+  .header-datetime .hdate { display: none; }
+  .header-datetime .htime { font-size: 0.75rem; }
+  .header-profile-name { font-size: 0.8rem; }
+  .header-inner {
+    padding: 8px 12px !important;
+    min-height: 56px;
+  }
+}
