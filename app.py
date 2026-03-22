@@ -49,20 +49,32 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_NAME'] = 'ms_session'
 app.config['PERMANENT_SESSION_LIFETIME'] = 86400 * 7  # 7 days
 
-with app.app_context():
+# Use /tmp for uploads on Vercel (only writable directory in serverless)
+VERCEL = os.getenv('VERCEL', False)
+if VERCEL:
+    app.config['UPLOAD_FOLDER'] = '/tmp/uploads'
+
+try:
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+except Exception:
+    pass
+
+def init_db():
+    """Initialize DB tables — called lazily on first request."""
     try:
-        db.create_all()  # Creates all tables including AuthToken
+        db.create_all()
         if not User.query.filter_by(username='admin').first():
             u = User(username='admin', full_name='System Admin')
             u.set_password('admin123')
             db.session.add(u)
             db.session.commit()
-            print("Successfully initialized fresh database tables and generated admin account.")
+            print("Default admin created.")
     except Exception as e:
-        print(f"Database initialization step bypassed or failed: {e}")
+        print(f"DB init error: {e}")
 
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs(os.path.join(os.path.dirname(__file__), 'static', 'images'), exist_ok=True)
+# Initialize on startup (works for both local and Vercel)
+with app.app_context():
+    init_db()
 
 # Allow credentials for cross-origin Netlify requests
 # CORS: add your Vercel URL to origins once deployed (e.g. https://medisync.vercel.app)
