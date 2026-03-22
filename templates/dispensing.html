@@ -188,10 +188,11 @@
             <p id="confirmDispenseMessage" style="margin-bottom: 16px;"></p>
         </div>
         <div class="modal-footer" style="flex-direction: column; align-items: stretch; gap: 8px;">
-            <button class="btn btn-primary" id="btnDispenseAndQueue">Dispense All Available &amp; Queue Remaining</button>
-            <button class="btn btn-coral" id="btnQueueAll">Queue Entire Request</button>
-            <button class="btn btn-outline" id="btnDispenseAndCancel">Dispense All Available &amp; Cancel Remaining</button>
-            <button class="btn btn-ghost" onclick="closeModal('confirmDispenseModal')">Cancel Entire Request</button>
+            <button class="btn btn-success" id="btnDispenseAll">Dispense All Available</button>
+            <button class="btn btn-primary" id="btnDispenseAndQueue">Dispense Half &amp; Queue Remaining</button>
+            <button class="btn btn-outline" id="btnDispenseAndCancel">Dispense Half &amp; Cancel Remaining</button>
+            <button class="btn btn-coral" id="btnQueueAll">Queue All</button>
+            <button class="btn btn-ghost" onclick="closeModal('confirmDispenseModal')">Cancel</button>
         </div>
     </div>
 </div>

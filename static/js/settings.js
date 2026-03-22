@@ -8,7 +8,8 @@
             document.getElementById('settingsName').value = user.full_name || '';
             document.getElementById('settingsUsername').value = user.username || '';
             if (user.profile_picture) {
-                document.getElementById('settingsProfilePic').innerHTML = '<img src="' + user.profile_picture + '" alt="Profile">';
+                var initTs = '?t=' + Date.now();
+                document.getElementById('settingsProfilePic').innerHTML = '<img src="' + user.profile_picture + initTs + '" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
             }
         } catch (e) { /* ignore */ }
     }
@@ -57,9 +58,17 @@
             var data = await res.json();
             if (res.ok) {
                 showToast('Profile picture updated.');
-                document.getElementById('settingsProfilePic').innerHTML = '<img src="' + data.profile_picture + '" alt="Profile">';
+                var ts = '?t=' + Date.now();
+                var picUrl = data.profile_picture + ts;
+                document.getElementById('settingsProfilePic').innerHTML = '<img src="' + picUrl + '" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
                 var headerPic = document.getElementById('headerProfilePic');
-                if (headerPic) headerPic.innerHTML = '<img src="' + data.profile_picture + '" alt="Profile">';
+                if (headerPic) headerPic.innerHTML = '<img src="' + picUrl + '" alt="Profile" style="width:100%;height:100%;object-fit:cover;">';
+                // Update localStorage cache so other pages reflect the new picture
+                try {
+                    var cached = JSON.parse(localStorage.getItem('ms_user') || '{}');
+                    cached.profile_picture = data.profile_picture;
+                    localStorage.setItem('ms_user', JSON.stringify(cached));
+                } catch(e) {}
             } else { showToast(data.error || 'Upload failed.', 'error'); }
         } catch (e) { showToast('Connection error.', 'error'); }
     });

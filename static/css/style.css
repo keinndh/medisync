@@ -1979,9 +1979,25 @@ select.form-control {
     -webkit-overflow-scrolling: touch;
     border-radius: var(--radius-sm);
     width: 100%;
+    /* Critical: constrain to parent card so it doesn't bleed out */
+    max-width: 100%;
+    display: block;
+  }
+  /* Cards inside grids must not overflow their column */
+  .grid-2 .card,
+  .grid-3 .card {
+    min-width: 0;
+    overflow: hidden;
+  }
+  /* The card-body with padding:0 needs to clip its table wrapper */
+  .card-body {
+    overflow: hidden;
+  }
+  .card-body .table-wrapper {
+    border-radius: 0;
   }
   .data-table {
-    min-width: 700px;
+    min-width: 520px;
   }
   .data-table th,
   .data-table td {
@@ -2119,6 +2135,22 @@ select.form-control {
   .grid-2, .grid-3, .form-row {
     grid-template-columns: 1fr !important;
     gap: 16px;
+  }
+
+  /* Cards inside grids must clip their table wrappers */
+  .grid-2 .card,
+  .grid-3 .card {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+    display: block;
+  }
+  .data-table {
+    min-width: 520px;
   }
 
   .modal-overlay { padding: 12px; }

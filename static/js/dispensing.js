@@ -311,6 +311,8 @@
             var data = await res.json();
 
             if (data.requires_confirmation) {
+                // Store the selected_batches context for confirm actions
+                currentDispensePayload = payload;
                 document.getElementById('confirmDispenseMessage').textContent = data.message;
                 openModal('confirmDispenseModal');
                 return;
@@ -335,6 +337,13 @@
             loadMedicineNames();
         } catch (e) { showToast('Connection error.', 'error'); }
     }
+
+    document.getElementById('btnDispenseAll').addEventListener('click', function () {
+        if (currentDispensePayload) {
+            currentDispensePayload.confirm_action = 'dispense_all';
+            submitDispense(currentDispensePayload);
+        }
+    });
 
     document.getElementById('btnDispenseAndQueue').addEventListener('click', function () {
         if (currentDispensePayload) {

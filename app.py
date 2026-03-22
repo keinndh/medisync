@@ -708,7 +708,16 @@ def api_dispense():
         total_selected = sum(b.get('qty', 0) for b in selected_batches)
         if total_selected == 0:
             return jsonify({'error': 'No quantity allocated from batches.'}), 400
-        
+
+        # Apply the same low-stock modal logic for selected batches
+        if total_selected >= (total_stock // 2):
+            half_qty = total_stock // 2
+            queue_qty = total_selected - half_qty
+            return jsonify({
+                'requires_confirmation': True,
+                'message': f'Dispensing {total_selected} will leave stock critically low (only {total_stock - total_selected} remaining out of {total_stock}). Dispense half ({half_qty}) and queue or cancel the remaining {queue_qty}?'
+            }), 200
+
         dispensed_total = 0
         last_disp_id = None
         for b_data in selected_batches:
@@ -740,6 +749,16 @@ def api_dispense():
         log_activity('Dispense', f'Dispensed {dispensed_total}x {article_name} to {data.get("recipient_name")} from selected batches')
         if last_disp_id:
             add_notification(f'Medicine dispensed: {dispensed_total}x {article_name} to {data.get("recipient_name")}', 'info', last_disp_id, 'dispensing')
+        # Check low stock after dispensing from selected batches
+        new_total = sum(b.quantity for b in Medicine.query.filter(
+            Medicine.article_name == article_name,
+            Medicine.status.in_(['Active', 'Near Expiry'])
+        ).all())
+        if new_total < 100:
+            add_notification(
+                f'Low stock alert: {article_name} has only {new_total} unit(s) remaining. Please restock soon.',
+                'warning', last_disp_id, 'low_stock'
+            )
         return jsonify({'queued': False, 'message': f'Dispensed {dispensed_total} items from selected batches.'}), 201
 
     # check stock - if queued qty >= total stock, can't fulfill (needs to be less than total stock)
@@ -800,10 +819,22 @@ def api_dispense():
                 add_notification(f'Insufficient stock for {article_name}. Remaining {queue_qty} queued.', 'warning', q.id, 'queue')
                 log_activity('Dispense', f'Queued remaining request for {article_name} (qty: {queue_qty}) - insufficient stock')
 
+            # Check low stock after queue_remaining partial dispense
+            new_total_qr = sum(bb.quantity for bb in Medicine.query.filter(
+                Medicine.article_name == article_name,
+                Medicine.status.in_(['Active', 'Near Expiry'])
+            ).all())
+            if new_total_qr < 100:
+                add_notification(
+                    f'Low stock alert: {article_name} has only {new_total_qr} unit(s) remaining. Please restock soon.',
+                    'warning', primary_med.id, 'low_stock'
+                )
+
             return jsonify({'queued': True, 'message': f'Dispensed {dispense_qty} and queued {queue_qty}.'}), 200
 
         elif confirm_action == 'cancel_remaining':
             dispense_qty = min(total_stock // 2, total_stock)
+            last_disp_id_cancel = None
 
             if dispense_qty > 0:
                 remaining_to_dispense = dispense_qty
@@ -825,10 +856,61 @@ def api_dispense():
                     )
                     db.session.add(disp)
                     db.session.commit()
+                    last_disp_id_cancel = disp.id
                     log_activity('Dispense', f'Partially dispensed {deduct}x {b.article_name} to {disp.recipient_name}. Remaining cancelled.')
                     add_notification(f'Medicine partially dispensed: {deduct}x {b.article_name}', 'info', disp.id, 'dispensing')
 
+            # Check low stock after cancel_remaining
+            new_total_cancel = sum(bb.quantity for bb in Medicine.query.filter(
+                Medicine.article_name == article_name,
+                Medicine.status.in_(['Active', 'Near Expiry'])
+            ).all())
+            if new_total_cancel < 100 and last_disp_id_cancel:
+                add_notification(
+                    f'Low stock alert: {article_name} has only {new_total_cancel} unit(s) remaining. Please restock soon.',
+                    'warning', last_disp_id_cancel, 'low_stock'
+                )
+
             return jsonify({'queued': False, 'message': f'Dispensed {dispense_qty} and cancelled remaining.'}), 200
+
+        elif confirm_action == 'dispense_all':
+            # Dispense all available stock (up to qty requested)
+            dispense_qty = min(total_stock, qty)
+            remaining_to_dispense = dispense_qty
+            last_disp_id_all = None
+            for b in batches:
+                if remaining_to_dispense <= 0: break
+                if b.quantity <= 0: continue
+                deduct = min(remaining_to_dispense, b.quantity)
+                b.quantity -= deduct
+                remaining_to_dispense -= deduct
+                disp = Dispensing(
+                    dispenser_name=data.get('dispenser_name', ''),
+                    medicine_id=b.id,
+                    recipient_name=data.get('recipient_name', ''),
+                    recipient_contact=data.get('recipient_contact', ''),
+                    center_id=center_id,
+                    quantity_dispensed=deduct,
+                    remarks=data.get('remarks', '')
+                )
+                db.session.add(disp)
+                db.session.flush()
+                last_disp_id_all = disp.id
+            db.session.commit()
+            log_activity('Dispense', f'Dispensed all available {dispense_qty}x {article_name} to {data.get("recipient_name")}')
+            if last_disp_id_all:
+                add_notification(f'Medicine dispensed: {dispense_qty}x {article_name} to {data.get("recipient_name")}', 'info', last_disp_id_all, 'dispensing')
+            # Check low stock
+            new_total_all = sum(bb.quantity for bb in Medicine.query.filter(
+                Medicine.article_name == article_name,
+                Medicine.status.in_(['Active', 'Near Expiry'])
+            ).all())
+            if new_total_all < 100 and last_disp_id_all:
+                add_notification(
+                    f'Low stock alert: {article_name} has only {new_total_all} unit(s) remaining. Please restock soon.',
+                    'warning', last_disp_id_all, 'low_stock'
+                )
+            return jsonify({'queued': False, 'message': f'Dispensed all {dispense_qty} available units.'}), 200
 
         elif confirm_action == 'queue_all':
             q = RequestQueue(
@@ -873,6 +955,16 @@ def api_dispense():
     db.session.commit()
     log_activity('Dispense', f'Dispensed {qty}x {article_name} to {data.get("recipient_name")}')
     add_notification(f'Medicine dispensed: {qty}x {article_name} to {data.get("recipient_name")}', 'info', disp.id, 'dispensing')
+    # Check low stock after full dispense
+    new_total = sum(b.quantity for b in Medicine.query.filter(
+        Medicine.article_name == article_name,
+        Medicine.status.in_(['Active', 'Near Expiry'])
+    ).all())
+    if new_total < 100:
+        add_notification(
+            f'Low stock alert: {article_name} has only {new_total} unit(s) remaining. Please restock soon.',
+            'warning', disp.id, 'low_stock'
+        )
     return jsonify({'queued': False, 'message': 'Medicine dispensed successfully'}), 201
 
 
