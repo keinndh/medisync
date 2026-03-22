@@ -18,9 +18,6 @@ instance/
 # Vercel
 .vercel/
 
-# Netlify (not needed on Vercel)
-dist/
-
 # OS
 .DS_Store
 Thumbs.db
@@ -31,7 +28,3 @@ Thumbs.db
 
 # Uploads (user data — don't commit)
 static/uploads/
-
-# Large files
-medicine_list.pdf
-dataset/

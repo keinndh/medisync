@@ -206,7 +206,10 @@
         var medName = document.getElementById('dispMedicine').value.trim();
         if (!medName) { showToast('Please select a medicine first.', 'error'); return; }
         
-        var availableBatches = fullMedsList.filter(function(m) { return m.article_name === medName && (m.status === 'Active' || m.status === 'Near Expiry'); });
+        var availableBatches = fullMedsList.filter(function(m) { 
+            return m.article_name === medName && (m.status === 'Active' || m.status === 'Near Expiry'); 
+        });
+
         if (!availableBatches.length) { showToast('No available stock for this medicine.', 'error'); return; }
 
         availableBatches.sort(function(a,b) {
@@ -217,16 +220,12 @@
         var tbody = document.getElementById('batchModalBody');
         tbody.innerHTML = availableBatches.map(function(b) {
             var alloc = selectedBatches[b.id] || 0;
-            var badge = '';
-            if (b.is_restock) badge = ' <span class="badge badge-edited">Restocked</span>';
-            else if (b.is_new_batch) badge = ' <span class="badge badge-created">New</span>';
-            
             return '<tr>' + 
-                   '<td>' + escapeHtml(b.stock_number) + badge + '</td>' +
+                   '<td>' + escapeHtml(b.stock_number) + '</td>' +
                    '<td>' + formatDate(b.expiration_date) + '</td>' +
                    '<td>' + b.quantity + '</td>' +
                    '<td>' + 
-                     '<input type="number" id="batchQtyInput_' + b.id + '" value="' + alloc + '" class="form-control" min="0" max="' + b.quantity + '" oninput="setBatchQty(' + b.id + ', this.value, ' + b.quantity + ')" style="width:80px;text-align:center;padding:4px;">' +
+                     '<input type="number" id="batchQtyInput_' + b.id + '" value="' + alloc + '" class="form-control" min="0" oninput="setBatchQty(' + b.id + ', this.value)" style="width:80px;text-align:center;padding:4px;">' +
                    '</td>' +
                    '</tr>';
         }).join('');
@@ -235,13 +234,9 @@
         openModal('batchSelectionModal');
     }
 
-    window.setBatchQty = function(id, val, max) {
+    window.setBatchQty = function(id, val) {
         var next = parseInt(val) || 0;
         if (next < 0) next = 0;
-        if (next > max) {
-            next = max;
-            document.getElementById('batchQtyInput_' + id).value = max;
-        }
         selectedBatches[id] = next;
         if(next === 0) delete selectedBatches[id];
         updateTotalBatchesSelected();
@@ -263,6 +258,7 @@
     document.getElementById('dispMedicine').addEventListener('input', function () {
         selectedBatches = {};
         document.getElementById('dispQty').value = '';
+        document.getElementById('dispStock').textContent = '-';
     });
 
     // --- Dispense Form Submit ---
@@ -277,7 +273,9 @@
         }
 
         var medName = document.getElementById('dispMedicine').value.trim();
-        if (!medName) { showToast('Please select a medicine.', 'error'); return; }
+        var manualBatches = Object.keys(selectedBatches).map(function(id) {
+            return { id: parseInt(id), qty: parseInt(selectedBatches[id]) };
+        }).filter(function(b) { return b.qty > 0; });
 
         var payload = {
             dispenser_name: document.getElementById('dispDispenser').value.trim(),
@@ -285,11 +283,11 @@
             recipient_name: document.getElementById('dispRecipient').value.trim(),
             recipient_contact: contact,
             center_id: document.getElementById('dispCenter').value || null,
-            quantity: parseInt(document.getElementById('dispQty').value),
+            quantity: manualBatches.length > 0 ? 
+                      manualBatches.reduce((acc, b) => acc + b.qty, 0) : 
+                      parseInt(document.getElementById('dispQty').value),
             remarks: document.getElementById('dispRemarks').value.trim(),
-            selected_batches: Object.keys(selectedBatches).map(function(id) {
-                return { id: parseInt(id), qty: parseInt(selectedBatches[id]) };
-            }).filter(function(b) { return b.qty > 0; })
+            selected_batches: manualBatches
         };
 
         if (!payload.dispenser_name || !payload.article_name || !payload.recipient_name || !payload.quantity) {
