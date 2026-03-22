@@ -80,7 +80,7 @@
 </div>
 
 <!-- Add Recipient Modal -->
-<div class="modal-overlay" id="addRecipientModal">
+<div class="modal-overlay" id="addRecipientModal" style="z-index: 1100;">
     <div class="modal modal-sm">
         <div class="modal-header">
             <h3>Add Recipient</h3>
@@ -132,7 +132,6 @@
                 <button class="btn btn-ghost btn-sm" id="cancelRecipientSelectBtn" style="display:none;">Cancel</button>
                 <div class="export-btn-wrap" id="recipientOptionsWrap">
                     <button class="btn btn-outline btn-sm" id="recipientOptionsBtn" title="Manage Recipients">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         Manage
                     </button>
                     <div class="export-dropdown" id="recipientOptionsDropdown">
@@ -147,7 +146,7 @@
                     </div>
                 </div>
             </div>
-            <div id="recipientsCardGrid" class="recipient-grid">
+            <div id="recipientsCardGrid" class="recipient-grid" style="padding: 16px;">
                 <!-- Recipient cards will be loaded here -->
             </div>
         </div>

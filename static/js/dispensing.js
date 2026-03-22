@@ -226,11 +226,7 @@
                    '<td>' + formatDate(b.expiration_date) + '</td>' +
                    '<td>' + b.quantity + '</td>' +
                    '<td>' + 
-                     '<div style="display:flex;align-items:center;gap:6px;">' +
-                       '<button type="button" class="btn btn-outline btn-sm" onclick="updateBatchQty(' + b.id + ', -1, ' + b.quantity + ')">-</button>' +
-                       '<input type="number" id="batchQtyInput_' + b.id + '" value="' + alloc + '" class="form-control" style="width:50px;text-align:center;padding:4px;" readonly>' +
-                       '<button type="button" class="btn btn-outline btn-sm" onclick="updateBatchQty(' + b.id + ', 1, ' + b.quantity + ')">+</button>' +
-                     '</div>' +
+                     '<input type="number" id="batchQtyInput_' + b.id + '" value="' + alloc + '" class="form-control" min="0" max="' + b.quantity + '" oninput="setBatchQty(' + b.id + ', this.value, ' + b.quantity + ')" style="width:80px;text-align:center;padding:4px;">' +
                    '</td>' +
                    '</tr>';
         }).join('');
@@ -239,13 +235,13 @@
         openModal('batchSelectionModal');
     }
 
-    window.updateBatchQty = function(id, delta, max) {
-        var input = document.getElementById('batchQtyInput_' + id);
-        var current = parseInt(input.value) || 0;
-        var next = current + delta;
+    window.setBatchQty = function(id, val, max) {
+        var next = parseInt(val) || 0;
         if (next < 0) next = 0;
-        if (next > max) next = max;
-        input.value = next;
+        if (next > max) {
+            next = max;
+            document.getElementById('batchQtyInput_' + id).value = max;
+        }
         selectedBatches[id] = next;
         if(next === 0) delete selectedBatches[id];
         updateTotalBatchesSelected();

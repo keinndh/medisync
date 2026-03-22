@@ -423,16 +423,17 @@ select.form-control {
 }
 
 .sidebar-footer {
-  padding: 16px 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 16px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
 }
 .sidebar-footer a {
+  padding: 14px 24px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   color: var(--red);
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   text-decoration: none;
   transition: var(--transition);
 }
@@ -2513,10 +2514,11 @@ select.form-control {
 
 /* Mobile header: compact, show name + time, hide date */
 @media (max-width: 768px) {
-  .header-center { display: block !important; }
+  .header-inner { justify-content: space-between; }
+  .header-center { display: block !important; flex: 1; text-align: center; }
   .header-center .header-line1 { font-size: 0.85rem; }
   .header-center .header-line2 { font-size: 0.7rem; }
-  .header-center .header-line3 { display: none; }
+  .header-center .header-line3 { display: block; font-size: 0.6rem; opacity: 0.7; margin-top: 1px; }
   .header-profile-info { display: flex !important; }
   .header-datetime .hdate { display: none; }
   .header-datetime .htime { font-size: 0.75rem; }
