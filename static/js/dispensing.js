@@ -3,6 +3,8 @@
     var allMedNames = [];   // array of medicine names (strings)
     var allCenters = [];    // center objects
     var currentQueueItem = null; // for queue detail modal
+    var fullMedsList = [];  // raw meds from endpoint
+    var selectedBatches = {}; // { batchId: qtyAllocated }
 
     // --- Validate Philippine mobile number ---
     function validateContact(val) {
@@ -56,8 +58,8 @@
     async function loadMedicineNames() {
         try {
             var res = await fetch(window.API_BASE + '/api/medicines');
-            var allMeds = await res.json();
-            var meds = allMeds.filter(function (m) { return m.status === 'Active' || m.status === 'Near Expiry'; });
+            fullMedsList = await res.json();
+            var meds = fullMedsList.filter(function (m) { return m.status === 'Active' || m.status === 'Near Expiry'; });
             var grouped = {};
             meds.forEach(function (m) {
                 if (!grouped[m.article_name]) grouped[m.article_name] = 0;
@@ -196,6 +198,77 @@
         } catch (e) { showToast('Connection error.', 'error'); }
     });
 
+    // --- Batch Selection ---
+    document.getElementById('btnOpenBatchSelect').addEventListener('click', openBatchSelection);
+    document.getElementById('dispQty').addEventListener('click', openBatchSelection);
+
+    function openBatchSelection() {
+        var medName = document.getElementById('dispMedicine').value.trim();
+        if (!medName) { showToast('Please select a medicine first.', 'error'); return; }
+        
+        var availableBatches = fullMedsList.filter(function(m) { return m.article_name === medName && (m.status === 'Active' || m.status === 'Near Expiry'); });
+        if (!availableBatches.length) { showToast('No available stock for this medicine.', 'error'); return; }
+
+        availableBatches.sort(function(a,b) {
+             return new Date(a.expiration_date || '9999-12-31') - new Date(b.expiration_date || '9999-12-31');
+        });
+
+        document.getElementById('batchModalMedName').textContent = medName;
+        var tbody = document.getElementById('batchModalBody');
+        tbody.innerHTML = availableBatches.map(function(b) {
+            var alloc = selectedBatches[b.id] || 0;
+            var badge = '';
+            if (b.is_restock) badge = ' <span class="badge badge-edited">Restocked</span>';
+            else if (b.is_new_batch) badge = ' <span class="badge badge-created">New</span>';
+            
+            return '<tr>' + 
+                   '<td>' + escapeHtml(b.stock_number) + badge + '</td>' +
+                   '<td>' + formatDate(b.expiration_date) + '</td>' +
+                   '<td>' + b.quantity + '</td>' +
+                   '<td>' + 
+                     '<div style="display:flex;align-items:center;gap:6px;">' +
+                       '<button type="button" class="btn btn-outline btn-sm" onclick="updateBatchQty(' + b.id + ', -1, ' + b.quantity + ')">-</button>' +
+                       '<input type="number" id="batchQtyInput_' + b.id + '" value="' + alloc + '" class="form-control" style="width:50px;text-align:center;padding:4px;" readonly>' +
+                       '<button type="button" class="btn btn-outline btn-sm" onclick="updateBatchQty(' + b.id + ', 1, ' + b.quantity + ')">+</button>' +
+                     '</div>' +
+                   '</td>' +
+                   '</tr>';
+        }).join('');
+        
+        updateTotalBatchesSelected();
+        openModal('batchSelectionModal');
+    }
+
+    window.updateBatchQty = function(id, delta, max) {
+        var input = document.getElementById('batchQtyInput_' + id);
+        var current = parseInt(input.value) || 0;
+        var next = current + delta;
+        if (next < 0) next = 0;
+        if (next > max) next = max;
+        input.value = next;
+        selectedBatches[id] = next;
+        if(next === 0) delete selectedBatches[id];
+        updateTotalBatchesSelected();
+    };
+
+    function updateTotalBatchesSelected() {
+        var total = 0;
+        for (var k in selectedBatches) { total += parseInt(selectedBatches[k]); }
+        document.getElementById('batchTotalAllocated').textContent = total;
+    }
+
+    document.getElementById('btnConfirmBatches').addEventListener('click', function() {
+        var total = 0;
+        for (var k in selectedBatches) { total += parseInt(selectedBatches[k]); }
+        document.getElementById('dispQty').value = total || '';
+        closeModal('batchSelectionModal');
+    });
+
+    document.getElementById('dispMedicine').addEventListener('input', function () {
+        selectedBatches = {};
+        document.getElementById('dispQty').value = '';
+    });
+
     // --- Dispense Form Submit ---
     let currentDispensePayload = null;
 
@@ -217,7 +290,10 @@
             recipient_contact: contact,
             center_id: document.getElementById('dispCenter').value || null,
             quantity: parseInt(document.getElementById('dispQty').value),
-            remarks: document.getElementById('dispRemarks').value.trim()
+            remarks: document.getElementById('dispRemarks').value.trim(),
+            selected_batches: Object.keys(selectedBatches).map(function(id) {
+                return { id: parseInt(id), qty: parseInt(selectedBatches[id]) };
+            }).filter(function(b) { return b.qty > 0; })
         };
 
         if (!payload.dispenser_name || !payload.article_name || !payload.recipient_name || !payload.quantity) {
@@ -255,6 +331,7 @@
                 document.getElementById('dispStock').textContent = '-';
                 document.getElementById('saveRecipientBtn').style.display = 'none';
                 document.getElementById('contactError').style.display = 'none';
+                selectedBatches = {};
             } else {
                 showToast(data.error || 'Failed to dispense.', 'error');
             }
@@ -402,6 +479,9 @@
                 loadQueue();
                 loadToday();
                 loadMedicineNames();
+                if (data.dispense_id) {
+                    window.open(window.API_BASE + '/api/dispense/' + data.dispense_id + '/receipt', '_blank');
+                }
             } else {
                 showToast(data.error || 'Cannot fulfill request.', 'error');
             }

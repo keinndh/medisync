@@ -1,7 +1,8 @@
 import os
 import io
 import csv
-from datetime import datetime, date, timedelta
+import secrets
+from datetime import datetime, date, timedelta, timezone
 from functools import wraps
 
 from flask import (
@@ -13,6 +14,14 @@ from models import db, User, Medicine, Center, Dispensing, RequestQueue, Activit
 
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+
+MANILA_TZ = timezone(timedelta(hours=8))
+
+def manila_now():
+    return datetime.now(MANILA_TZ).replace(tzinfo=None)
+
+def manila_today():
+    return manila_now().date()
 
 # app configuration
 app = Flask(__name__)
@@ -34,6 +43,9 @@ db.init_app(app)
 
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_NAME'] = 'ms_session'
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400 * 7  # 7 days
 
 with app.app_context():
     try:
@@ -51,22 +63,46 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(os.path.join(os.path.dirname(__file__), 'static', 'images'), exist_ok=True)
 
 # Allow credentials for cross-origin Netlify requests
-CORS(app, supports_credentials=True)
+CORS(app,
+     supports_credentials=True,
+     origins=[
+         'https://medisync-inventory.netlify.app',
+         'https://medisyncinventory.onrender.com',
+         'http://127.0.0.1:5000',
+         'http://localhost:5000',
+         'http://localhost:3000',
+     ],
+     allow_headers=['Content-Type', 'Authorization', 'X-Auth-Token'],
+     expose_headers=['X-Auth-Token']
+)
 
 # helpers
+# In-memory token store: token -> user_id
+# (For production, use Redis or a DB table)
+_auth_tokens = {}
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'user_id' not in session:
-            if request.is_json or request.path.startswith('/api/'):
-                return jsonify({'error': 'Unauthorized'}), 401
-            return redirect(url_for('login_page'))
+        # Try token header first (mobile-friendly, avoids cross-site cookie issues)
+        token = request.headers.get('X-Auth-Token') or request.args.get('auth_token')
+        if token and token in _auth_tokens:
+            request.current_user_id = _auth_tokens[token]
+            return f(*args, **kwargs)
+        # Fall back to session cookie (desktop browsers)
+        if 'user_id' in session:
+            request.current_user_id = session['user_id']
+            return f(*args, **kwargs)
+        if request.is_json or request.path.startswith('/api/'):
+            return jsonify({'error': 'Unauthorized'}), 401
+        return redirect(url_for('login_page'))
         return f(*args, **kwargs)
     return decorated
 
 
 def log_activity(action, details=''):
-    user = User.query.get(session.get('user_id'))
+    uid = getattr(request, 'current_user_id', None) or session.get('user_id')
+    user = User.query.get(uid)
     performed_by = user.full_name if user else 'System'
     entry = ActivityLog(action=action, performed_by=performed_by, details=details)
     db.session.add(entry)
@@ -84,7 +120,7 @@ def add_notification(message, notif_type='info', reference_id=None, reference_ty
 
 def check_expirations():
     """Check medicines for expiration and create notifications."""
-    today = date.today()
+    today = manila_today()
     near_expiry_threshold = today + timedelta(days=180)  # 6 months
     medicines = Medicine.query.filter(
         Medicine.status.in_(['Active', 'Near Expiry']),
@@ -145,12 +181,6 @@ def dispensing_page():
     return render_template('dispensing.html')
 
 
-@app.route('/analytics')
-@login_required
-def analytics_page():
-    return render_template('analytics.html')
-
-
 @app.route('/centers')
 @login_required
 def centers_page():
@@ -177,9 +207,13 @@ def api_login():
     password = data.get('password', '')
     user = User.query.filter_by(username=username).first()
     if user and user.check_password(password):
+        session.permanent = True
         session['user_id'] = user.id
+        # Generate a token for mobile/cross-origin clients
+        token = secrets.token_hex(32)
+        _auth_tokens[token] = user.id
         log_activity('Login', f'User {user.username} logged in.')
-        return jsonify({'success': True, 'user': user.to_dict()})
+        return jsonify({'success': True, 'user': user.to_dict(), 'token': token})
     return jsonify({'success': False, 'error': 'Invalid username or password.'}), 401
 
 
@@ -188,6 +222,10 @@ def api_login():
 def api_logout():
     log_activity('Logout', 'User logged out.')
     session.clear()
+    # Remove token if provided
+    token = request.headers.get('X-Auth-Token')
+    if token and token in _auth_tokens:
+        del _auth_tokens[token]
     return jsonify({'success': True})
 
 
@@ -202,7 +240,7 @@ def api_me():
 @app.route('/api/dashboard/stats')
 @login_required
 def api_dashboard_stats():
-    today = date.today()
+    today = manila_today()
     near_expiry_threshold = today + timedelta(days=180)
     total = Medicine.query.filter(Medicine.status.in_(['Active', 'Near Expiry', 'Expired'])).count()
     expired = Medicine.query.filter_by(status='Expired').count()
@@ -226,7 +264,7 @@ def api_dashboard_stats():
 @app.route('/api/dashboard/block/<block_type>')
 @login_required
 def api_dashboard_block(block_type):
-    today = date.today()
+    today = manila_today()
     near_expiry_threshold = today + timedelta(days=180)
     items = []
     if block_type == 'total':
@@ -290,6 +328,14 @@ def api_medicines():
         except ValueError:
             pass
 
+    restocked_filter = request.args.get('restocked_date', '')
+    if restocked_filter:
+        try:
+            filter_date = datetime.strptime(restocked_filter, '%Y-%m-%d').date()
+            query = query.filter(Medicine.is_restock == True, db.func.date(Medicine.date_added) == filter_date)
+        except ValueError:
+            pass
+
     # sorting
     sort_by = request.args.get('sort', 'date_added')
     if sort_by == 'quantity':
@@ -316,19 +362,24 @@ def api_add_medicine():
         except ValueError:
             return jsonify({'error': 'Invalid expiration date format.'}), 400
 
-    existing = Medicine.query.filter_by(stock_number=data.get('stock_number', '')).first()
+    stock_num = data.get('stock_number', '')
+    existing = Medicine.query.filter_by(stock_number=stock_num).first()
     if existing:
-        return jsonify({'error': 'Stock number already exists.'}), 400
+        if data.get('force_add'):
+            import time
+            stock_num = f"{stock_num}-NEW-{int(time.time())}"
+        else:
+            return jsonify({'error': 'Stock number already exists.'}), 400
 
     status = 'Active'
     if exp_date:
-        if exp_date <= date.today():
+        if exp_date <= manila_today():
             status = 'Expired'
-        elif exp_date <= date.today() + timedelta(days=180):
+        elif exp_date <= manila_today() + timedelta(days=180):
             status = 'Near Expiry'
 
     med = Medicine(
-        stock_number=data.get('stock_number', ''),
+        stock_number=stock_num,
         article_name=data.get('article_name', ''),
         description_dosage=data.get('description_dosage', ''),
         unit_of_measurement=data.get('unit_of_measurement', ''),
@@ -365,9 +416,9 @@ def api_edit_medicine(med_id):
             exp_date = datetime.strptime(data['expiration_date'], '%Y-%m-%d').date()
             med.expiration_date = exp_date
             if med.status in ['Active', 'Near Expiry', 'Expired']:
-                if exp_date <= date.today():
+                if exp_date <= manila_today():
                     med.status = 'Expired'
-                elif exp_date <= date.today() + timedelta(days=180):
+                elif exp_date <= manila_today() + timedelta(days=180):
                     med.status = 'Near Expiry'
                 else:
                     med.status = 'Active'
@@ -402,13 +453,13 @@ def api_restock_medicine(med_id):
 
     status = 'Active'
     if exp_date:
-        if exp_date <= date.today():
+        if exp_date <= manila_today():
             status = 'Expired'
-        elif exp_date <= date.today() + timedelta(days=180):
+        elif exp_date <= manila_today() + timedelta(days=180):
             status = 'Near Expiry'
 
     # generate stock number for restocked: original-MMDDYYYY
-    restock_date_str = date.today().strftime('%m%d%Y')
+    restock_date_str = manila_today().strftime('%m%d%Y')
     new_stock_number = f"{old_med.stock_number}-{restock_date_str}"
     # if same date restock already exists, append counter
     counter = 0
@@ -484,6 +535,23 @@ def api_categories():
     return jsonify(all_cats)
 
 
+@app.route('/api/medicines/categories', methods=['POST'])
+@login_required
+def api_add_category():
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'error': 'Category name is required.'}), 400
+        
+    existing = MedicineCategory.query.filter(db.func.lower(MedicineCategory.name) == name.lower()).first()
+    if not existing:
+        cat = MedicineCategory(name=name)
+        db.session.add(cat)
+        db.session.commit()
+        return jsonify(cat.to_dict()), 201
+    return jsonify(existing.to_dict()), 200
+
+
 # export api
 @app.route('/api/inventory/export/csv')
 @login_required
@@ -509,7 +577,7 @@ def api_export_csv():
         io.BytesIO(output.getvalue().encode('utf-8')),
         mimetype='text/csv',
         as_attachment=True,
-        download_name=f'medisync_inventory_{date.today().isoformat()}.csv'
+        download_name=f'medisync_inventory_{manila_today().isoformat()}.csv'
     )
 
 
@@ -529,7 +597,7 @@ def api_export_pdf():
     elements = []
 
     elements.append(Paragraph('MediSync - Medicine Inventory Report', styles['Title']))
-    elements.append(Paragraph(f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M")}', styles['Normal']))
+    elements.append(Paragraph(f'Generated: {manila_now().strftime("%Y-%m-%d %H:%M")}', styles['Normal']))
     elements.append(Spacer(1, 0.3 * inch))
 
     headers = ['Stock #', 'Article', 'Dosage', 'Unit', 'Qty', 'Category', 'Exp. Date', 'Days', 'Status']
@@ -560,7 +628,7 @@ def api_export_pdf():
     buffer.seek(0)
     return send_file(
         buffer, mimetype='application/pdf', as_attachment=True,
-        download_name=f'medisync_inventory_{date.today().isoformat()}.pdf'
+        download_name=f'medisync_inventory_{manila_today().isoformat()}.pdf'
     )
 
 
@@ -589,6 +657,46 @@ def api_dispense():
 
     center_id = data.get('center_id') or None
     primary_med = batches[0]  # used for queueing remaining amounts
+
+    # Explicit batch selection processing
+    selected_batches = data.get('selected_batches')
+    if selected_batches and not data.get('confirm_action'):
+        total_selected = sum(b.get('qty', 0) for b in selected_batches)
+        if total_selected == 0:
+            return jsonify({'error': 'No quantity allocated from batches.'}), 400
+        
+        dispensed_total = 0
+        last_disp_id = None
+        for b_data in selected_batches:
+            batch_id = b_data.get('id')
+            alloc_qty = b_data.get('qty', 0)
+            if alloc_qty <= 0: continue
+            
+            b = Medicine.query.get(batch_id)
+            if not b or b.quantity < alloc_qty:
+                return jsonify({'error': f'Batch {b.stock_number if b else "unknown"} does not have enough stock.'}), 400
+                
+            b.quantity -= alloc_qty
+            dispensed_total += alloc_qty
+            
+            disp = Dispensing(
+                dispenser_name=data.get('dispenser_name', ''),
+                medicine_id=b.id,
+                recipient_name=data.get('recipient_name', ''),
+                recipient_contact=data.get('recipient_contact', ''),
+                center_id=center_id,
+                quantity_dispensed=alloc_qty,
+                remarks=data.get('remarks', '')
+            )
+            db.session.add(disp)
+            db.session.flush()
+            last_disp_id = disp.id
+            
+        db.session.commit()
+        log_activity('Dispense', f'Dispensed {dispensed_total}x {article_name} to {data.get("recipient_name")} from selected batches')
+        if last_disp_id:
+            add_notification(f'Medicine dispensed: {dispensed_total}x {article_name} to {data.get("recipient_name")}', 'info', last_disp_id, 'dispensing')
+        return jsonify({'queued': False, 'message': f'Dispensed {dispensed_total} items from selected batches.'}), 201
 
     # check stock - if queued qty >= total stock, can't fulfill (needs to be less than total stock)
     if total_stock == 0:
@@ -727,7 +835,7 @@ def api_dispense():
 @app.route('/api/dispense/today')
 @login_required
 def api_dispense_today():
-    today_start = datetime.combine(date.today(), datetime.min.time())
+    today_start = datetime.combine(manila_today(), datetime.min.time())
     items = Dispensing.query.filter(Dispensing.date_time >= today_start).order_by(Dispensing.date_time.desc()).all()
     return jsonify([d.to_dict() for d in items])
 
@@ -869,6 +977,7 @@ def api_queue_fulfill(q_id):
 
     if total_stock >= item.quantity_requested:
         remaining_qty = item.quantity_requested
+        first_disp_id = None
         for b in batches:
             if remaining_qty <= 0: break
             if b.quantity <= 0: continue
@@ -886,12 +995,15 @@ def api_queue_fulfill(q_id):
                 remarks='Fulfilled from queue'
             )
             db.session.add(disp)
+            db.session.flush()
+            if not first_disp_id:
+                first_disp_id = disp.id
 
         item.status = 'Fulfilled'
-        item.fulfilled_at = datetime.now()
+        item.fulfilled_at = manila_now()
         db.session.commit()
         log_activity('Dispense', f'Fulfilled queue request #{q_id}: {item.quantity_requested}x {original_med.article_name} to {item.recipient_name}')
-        return jsonify({'success': True, 'message': 'Queue request fulfilled.'})
+        return jsonify({'success': True, 'message': 'Queue request fulfilled.', 'dispense_id': first_disp_id})
     else:
         return jsonify({'error': f'Still insufficient stock. Total available: {total_stock}'}), 400
 
@@ -902,7 +1014,7 @@ def api_queue_fulfill(q_id):
 def api_analytics_expired():
     medicines = Medicine.query.filter(
         Medicine.expiration_date.isnot(None),
-        Medicine.expiration_date <= date.today(),
+        Medicine.expiration_date <= manila_today(),
         Medicine.status.in_(['Expired', 'Discarded', 'Active', 'Near Expiry'])
     ).all()
     return jsonify([m.to_dict() for m in medicines])
@@ -911,7 +1023,7 @@ def api_analytics_expired():
 @app.route('/api/analytics/expiring')
 @login_required
 def api_analytics_expiring():
-    today = date.today()
+    today = manila_today()
     threshold = today + timedelta(days=30)
     medicines = Medicine.query.filter(
         Medicine.status.in_(['Active', 'Near Expiry']),
@@ -1127,6 +1239,116 @@ def api_logs():
 
     logs = query.order_by(ActivityLog.timestamp.desc()).limit(500).all()
     return jsonify([l.to_dict() for l in logs])
+
+
+@app.route('/api/logs/export/csv')
+@login_required
+def api_logs_export_csv():
+    logs = ActivityLog.query.order_by(ActivityLog.timestamp.desc()).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['ID', 'Timestamp', 'Action', 'Performed By', 'Details'])
+    for l in logs:
+        writer.writerow([
+            l.id,
+            l.timestamp.strftime('%Y-%m-%d %H:%M') if l.timestamp else '',
+            l.action,
+            l.performed_by,
+            l.details
+        ])
+    output.seek(0)
+    return send_file(
+        io.BytesIO(output.getvalue().encode('utf-8')),
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=f'medisync_logs_{manila_today().isoformat()}.csv'
+    )
+
+
+@app.route('/api/logs/export/pdf')
+@login_required
+def api_logs_export_pdf():
+    from reportlab.lib.pagesizes import landscape, A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet
+
+    logs = ActivityLog.query.order_by(ActivityLog.timestamp.desc()).limit(1000).all()
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
+    styles = getSampleStyleSheet()
+    elements = []
+
+    elements.append(Paragraph('MediSync - Activity Logs Report', styles['Title']))
+    elements.append(Paragraph(f'Generated: {manila_now().strftime("%Y-%m-%d %H:%M")}', styles['Normal']))
+    elements.append(Spacer(1, 0.3 * inch))
+
+    headers = ['ID', 'Timestamp', 'Action', 'Performed By', 'Details']
+    data = [headers]
+    for l in logs:
+        data.append([
+            str(l.id),
+            l.timestamp.strftime('%Y-%m-%d %H:%M') if l.timestamp else '',
+            l.action,
+            l.performed_by,
+            l.details
+        ])
+
+    table = Table(data, colWidths=[0.5*inch, 1.5*inch, 1*inch, 1.5*inch, 5.5*inch], repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#5CB9A4')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    elements.append(table)
+    doc.build(elements)
+    buffer.seek(0)
+    return send_file(
+        buffer, mimetype='application/pdf', as_attachment=True,
+        download_name=f'medisync_logs_{manila_today().isoformat()}.pdf'
+    )
+
+
+@app.route('/api/logs/archive', methods=['POST'])
+@login_required
+def api_logs_archive():
+    six_months_ago = manila_now() - timedelta(days=180)
+    old_logs = ActivityLog.query.filter(ActivityLog.timestamp <= six_months_ago).order_by(ActivityLog.timestamp.asc()).all()
+    
+    if not old_logs:
+        return jsonify({'error': 'No logs older than 6 months found.'}), 400
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['ID', 'Timestamp', 'Action', 'Performed By', 'Details'])
+    
+    for l in old_logs:
+        writer.writerow([
+            l.id,
+            l.timestamp.strftime('%Y-%m-%d %H:%M') if l.timestamp else '',
+            l.action,
+            l.performed_by,
+            l.details
+        ])
+        db.session.delete(l)
+        
+    db.session.commit()
+    log_activity('System', f'Archived and deleted {len(old_logs)} logs older than 6 months.')
+
+    output.seek(0)
+    return send_file(
+        io.BytesIO(output.getvalue().encode('utf-8')),
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=f'medisync_archived_logs_{manila_today().isoformat()}.csv'
+    )
 
 
 # notifications api

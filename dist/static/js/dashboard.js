@@ -74,7 +74,7 @@
                         '</td><td>' + escapeHtml(d.center_name) + '</td><td>' + formatDateTime(d.date_time) + '</td></tr>';
                 }).join('') : '<tr class="empty-row"><td colspan="6">No items found</td></tr>';
             } else {
-                thead.innerHTML = '<tr><th>Stock #</th><th>Article</th><th>Unit</th><th>Qty</th><th>Category</th><th>Exp. Date</th><th>Status</th></tr>';
+                thead.innerHTML = '<tr><th>Stock #</th><th>Article</th><th>Unit</th><th>Qty</th><th>Generic Name</th><th>Exp. Date</th><th>Status</th></tr>';
                 tbody.innerHTML = items.length ? items.map(function (m) {
                     return '<tr><td>' + escapeHtml(m.stock_number) + '</td><td>' + escapeHtml(m.article_name) +
                         '</td><td>' + escapeHtml(m.unit_of_measurement) + '</td><td>' + m.quantity +

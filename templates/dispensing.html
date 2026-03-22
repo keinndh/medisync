@@ -62,7 +62,8 @@
                     </div>
                     <div class="form-group">
                         <label for="dispQty">Quantity to Dispense</label>
-                        <input type="number" id="dispQty" class="form-control" min="1" placeholder="0" required>
+                        <input type="number" id="dispQty" class="form-control" min="1" placeholder="0" readonly style="cursor: pointer; background: var(--bg-color);">
+                        <button type="button" class="btn btn-outline btn-sm" id="btnOpenBatchSelect" style="margin-top: 6px; width: 100%;">Click to Allocate from Batches</button>
                     </div>
                 </div>
                 <div class="form-group">
@@ -102,7 +103,7 @@
                     <tr>
                         <th>Dispenser</th>
                         <th>Date/Time</th>
-                        <th>Article/Name</th>
+                        <th>Brand Name</th>
                         <th>Quantity</th>
                         <th>Recipient</th>
                         <th>Contact</th>
@@ -242,6 +243,40 @@
         <div class="modal-footer">
             <button class="btn btn-outline" onclick="closeModal('saveRecipientModal')">Cancel</button>
             <button class="btn btn-primary" id="saveRecipientConfirm">Save Profile</button>
+        </div>
+    </div>
+</div>
+
+<!-- Batch Selection Modal -->
+<div class="modal-overlay" id="batchSelectionModal">
+    <div class="modal modal-md">
+        <div class="modal-header">
+            <h3>Select Quantities per Batch</h3>
+            <button class="modal-close" onclick="closeModal('batchSelectionModal')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+        <div class="modal-body">
+            <p style="margin-bottom: 12px;">Select how much to dispense from each recorded batch for <strong id="batchModalMedName" style="color:var(--primary-dark);"></strong>.</p>
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Stock #</th>
+                            <th>Exp. Date</th>
+                            <th>Available</th>
+                            <th>Allocate</th>
+                        </tr>
+                    </thead>
+                    <tbody id="batchModalBody">
+                    </tbody>
+                </table>
+            </div>
+            <div style="margin-top: 16px; text-align: right; font-size: 1.1rem;">
+                Total Allocated: <strong id="batchTotalAllocated" style="color:var(--primary-dark);">0</strong>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('batchSelectionModal')">Cancel</button>
+            <button class="btn btn-primary" id="btnConfirmBatches">Confirm Selection</button>
         </div>
     </div>
 </div>

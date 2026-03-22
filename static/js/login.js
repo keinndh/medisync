@@ -15,6 +15,18 @@ window.fetch = function() {
     return originalFetch(resource, config);
 };
 
+// Password toggle
+    var toggleBtn = document.getElementById('passwordToggle');
+    var passInput = document.getElementById('password');
+    var eyeOn = document.getElementById('eyeIcon');
+    var eyeOff = document.getElementById('eyeOffIcon');
+    toggleBtn.addEventListener('click', function() {
+        var isPassword = passInput.type === 'password';
+        passInput.type = isPassword ? 'text' : 'password';
+        eyeOn.style.display = isPassword ? 'none' : 'block';
+        eyeOff.style.display = isPassword ? 'block' : 'none';
+    });
+
 (function () {
     var form = document.getElementById('loginForm');
     var errEl = document.getElementById('loginError');

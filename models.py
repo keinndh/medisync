@@ -1,6 +1,13 @@
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
+MANILA_TZ = timezone(timedelta(hours=8))
+
+def manila_now():
+    return manila_now(MANILA_TZ).replace(tzinfo=None)
+
+def manila_today():
+    return manila_now().date()
 
 db = SQLAlchemy()
 
@@ -12,7 +19,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     full_name = db.Column(db.String(120), nullable=False, default='Admin')
     profile_picture = db.Column(db.String(256), default='')
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=manila_now)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -41,7 +48,7 @@ class Medicine(db.Model):
     category = db.Column(db.String(500), default='')
     remarks = db.Column(db.Text, default='')
     expiration_date = db.Column(db.Date, nullable=True)
-    date_added = db.Column(db.DateTime, default=datetime.now)
+    date_added = db.Column(db.DateTime, default=manila_now)
     status = db.Column(db.String(30), default='Active')  # Active, Expired, Discarded, Deleted
     is_new_batch = db.Column(db.Boolean, default=True)
     is_restock = db.Column(db.Boolean, default=False)
@@ -54,7 +61,7 @@ class Medicine(db.Model):
     def to_dict(self):
         days_remaining = None
         if self.expiration_date:
-            delta = self.expiration_date - date.today()
+            delta = self.expiration_date - manila_today()
             days_remaining = delta.days
 
         return {
@@ -81,7 +88,7 @@ class Center(db.Model):
     __tablename__ = 'centers'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=manila_now)
 
     dispensings = db.relationship('Dispensing', backref='center', lazy=True)
     queue_items = db.relationship('RequestQueue', backref='center', lazy=True)
@@ -101,7 +108,7 @@ class Recipient(db.Model):
     name = db.Column(db.String(200), nullable=False)
     contact = db.Column(db.String(100), default='')
     center_id = db.Column(db.Integer, db.ForeignKey('centers.id'), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=manila_now)
 
     def to_dict(self):
         return {
@@ -123,7 +130,7 @@ class Dispensing(db.Model):
     recipient_contact = db.Column(db.String(100), default='')
     center_id = db.Column(db.Integer, db.ForeignKey('centers.id'), nullable=True)
     quantity_dispensed = db.Column(db.Integer, nullable=False)
-    date_time = db.Column(db.DateTime, default=datetime.now)
+    date_time = db.Column(db.DateTime, default=manila_now)
     remarks = db.Column(db.Text, default='')
 
     def to_dict(self):
@@ -154,7 +161,7 @@ class RequestQueue(db.Model):
     quantity_requested = db.Column(db.Integer, nullable=False)
     priority = db.Column(db.Integer, default=0)
     status = db.Column(db.String(30), default='Pending')  # Pending, Fulfilled
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=manila_now)
     fulfilled_at = db.Column(db.DateTime, nullable=True)
 
     def to_dict(self):
@@ -179,7 +186,7 @@ class RequestQueue(db.Model):
 class ActivityLog(db.Model):
     __tablename__ = 'activity_logs'
     id = db.Column(db.Integer, primary_key=True)
-    timestamp = db.Column(db.DateTime, default=datetime.now)
+    timestamp = db.Column(db.DateTime, default=manila_now)
     action = db.Column(db.String(50), nullable=False)  # Login, Add, Edit, Delete, Discard, Dispense, Restock, Logout
     performed_by = db.Column(db.String(120), nullable=False)
     details = db.Column(db.Text, default='')
@@ -200,7 +207,7 @@ class Notification(db.Model):
     message = db.Column(db.String(500), nullable=False)
     type = db.Column(db.String(50), default='info')  # info, warning, alert
     is_read = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=manila_now)
     reference_id = db.Column(db.Integer, nullable=True)
     reference_type = db.Column(db.String(50), default='')
 

@@ -1,6 +1,7 @@
 /* MediSync - Inventory JS */
 (function () {
     var allMedicines = [];
+    var systemCategories = [];
 
     // --- Load Stats ---
     async function loadInvStats() {
@@ -19,17 +20,57 @@
     async function loadCategories() {
         try {
             var res = await fetch(window.API_BASE + '/api/medicines/categories');
-            var cats = await res.json();
+            systemCategories = await res.json();
             
             // Setup filter autocomplete
-            setupCategoryAutocomplete('invCategoryInput', 'invCategoryDropdown', cats, function() {
+            setupCategoryAutocomplete('invCategoryInput', 'invCategoryDropdown', systemCategories, function() {
                 loadMedicines();
             });
             
             // Setup form autocomplete
-            setupCategoryAutocomplete('medCategory', 'medCategoryDropdown', cats);
+            setupCategoryAutocomplete('medCategory', 'medCategoryDropdown', systemCategories);
             
         } catch (e) { /* ignore */ }
+    }
+
+    // --- Genric Name Add Logic ---
+    document.getElementById('addCategoryBtn').addEventListener('click', async function() {
+        var newCat = document.getElementById('medCategory').value.trim();
+        if (!newCat) return;
+
+        var lowerCat = newCat.toLowerCase();
+        var exists = systemCategories.find(c => c.toLowerCase() === lowerCat);
+        
+        if (exists) {
+            openModal('duplicateCategoryModal');
+        } else {
+            await submitNewCategory(newCat);
+        }
+    });
+
+    document.getElementById('dupCategoryAddBtn').addEventListener('click', async function() {
+        var newCat = document.getElementById('medCategory').value.trim();
+        closeModal('duplicateCategoryModal');
+        await submitNewCategory(newCat);
+    });
+
+    async function submitNewCategory(catName) {
+        try {
+            var res = await fetch(window.API_BASE + '/api/medicines/categories', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: catName })
+            });
+            if (res.ok) {
+                showToast('Generic name added successfully.');
+                loadCategories();
+            } else {
+                var data = await res.json();
+                showToast(data.error || 'Failed to add generic name.', 'error');
+            }
+        } catch (e) {
+            showToast('Connection error.', 'error');
+        }
     }
 
     function setupCategoryAutocomplete(inputId, dropdownId, cats, onSelect) {
@@ -79,6 +120,9 @@
         } else if (type === 'date_added') {
             var d = document.getElementById('invDateFilter').value;
             if (d) params.set('date_added', d);
+        } else if (type === 'restocked_date') {
+            var d2 = document.getElementById('invDateFilter').value;
+            if (d2) params.set('restocked_date', d2);
         } else if (type === 'sort') {
             var sort = document.getElementById('invSortBy').value;
             params.set('sort', sort);
@@ -135,7 +179,7 @@
         
         if (val === 'status') invStatusWrapper.style.display = 'block';
         else if (val === 'category') invCategoryWrapper.style.display = 'block';
-        else if (val === 'date_added') invDateWrapper.style.display = 'block';
+        else if (val === 'date_added' || val === 'restocked_date') invDateWrapper.style.display = 'block';
         else if (val === 'sort') invSortWrapper.style.display = 'block';
         
         loadMedicines();
@@ -189,6 +233,10 @@
 
     // --- Submit Medicine ---
     document.getElementById('medSubmitBtn').addEventListener('click', async function () {
+        submitMedicinePayload(false);
+    });
+
+    async function submitMedicinePayload(forceAdd) {
         var editId = document.getElementById('medEditId').value;
         var payload = {
             stock_number: document.getElementById('medStock').value.trim(),
@@ -207,6 +255,22 @@
         if (!payload.stock_number || !payload.article_name || !payload.unit_of_measurement) {
             showToast('Please fill in required fields.', 'error');
             return;
+        }
+
+        if (!editId && !forceAdd) {
+            var dup = allMedicines.find(function(m) {
+                return m.stock_number.toLowerCase() === payload.stock_number.toLowerCase() &&
+                       m.article_name.toLowerCase() === payload.article_name.toLowerCase();
+            });
+            if (dup) {
+                window.duplicateMedicineFound = dup;
+                openModal('duplicateMedModal');
+                return;
+            }
+        }
+        
+        if (forceAdd) {
+             payload.force_add = true;
         }
 
         try {
@@ -229,6 +293,28 @@
         } catch (e) {
             showToast('Connection error.', 'error');
         }
+    }
+
+    document.getElementById('dupAddBtn').addEventListener('click', function() {
+        closeModal('duplicateMedModal');
+        submitMedicinePayload(true);
+    });
+
+    document.getElementById('dupRestockBtn').addEventListener('click', function() {
+        closeModal('duplicateMedModal');
+        closeModal('medModal');
+        
+        var dup = window.duplicateMedicineFound;
+        if (!dup) return;
+        
+        document.getElementById('restockMedSelect').innerHTML = '<option value="' + dup.id + '">' + dup.article_name + ' (' + dup.stock_number + ')</option>';
+        document.getElementById('restockMedSelect').value = dup.id;
+        document.getElementById('restockStock').value = dup.stock_number;
+        document.getElementById('restockCategory').value = dup.category || '';
+        document.getElementById('restockDosage').value = dup.description_dosage || '';
+        document.getElementById('restockUnit').value = dup.unit_of_measurement;
+        
+        openModal('restockModal');
     });
 
     // --- Edit Medicine ---
@@ -397,7 +483,7 @@
                         '</td><td>' + escapeHtml(d.center_name) + '</td><td>' + formatDateTime(d.date_time) + '</td></tr>';
                 }).join('') : '<tr class="empty-row"><td colspan="6">No items</td></tr>';
             } else {
-                thead.innerHTML = '<tr><th>Stock #</th><th>Article</th><th>Unit</th><th>Qty</th><th>Category</th><th>Exp. Date</th><th>Days</th><th>Status</th></tr>';
+                thead.innerHTML = '<tr><th>Stock #</th><th>Article</th><th>Unit</th><th>Qty</th><th>Generic Name</th><th>Exp. Date</th><th>Days</th><th>Status</th></tr>';
                 tbody.innerHTML = items.length ? items.map(function (m) {
                     var popDays = '-';
                     if (m.days_remaining !== null) {

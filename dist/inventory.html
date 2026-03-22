@@ -260,7 +260,7 @@
         <select id="invFilterType" class="form-control">
             <option value="">-- Filter By --</option>
             <option value="status">Status</option>
-            <option value="category">Category</option>
+            <option value="category">Generic Name</option>
             <option value="date_added">Date Added</option>
             <option value="sort">Sort Order</option>
         </select>
@@ -333,11 +333,11 @@
                 <thead>
                     <tr>
                         <th>Stock #</th>
-                        <th>Article/Name</th>
-                        <th>Description/Dosage</th>
+                        <th>Brand Name</th>
+                        <th>Dosage</th>
                         <th>Unit</th>
                         <th>Qty</th>
-                        <th>Category</th>
+                        <th>Generic Name</th>
                         <th>Expiration Date</th>
                         <th>Days To Expire</th>
                         <th>Remarks</th>
@@ -403,7 +403,7 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group autocomplete-wrapper">
-                        <label for="medCategory">Category</label>
+                        <label for="medCategory">Generic Name</label>
                         <input type="text" id="medCategory" class="form-control" placeholder="e.g. Antibiotic, Vitamin" autocomplete="off">
                         <div class="autocomplete-dropdown" id="medCategoryDropdown"></div>
                     </div>
@@ -447,7 +447,7 @@
                         <input type="text" id="restockStock" class="form-control" disabled>
                     </div>
                     <div class="form-group">
-                        <label for="restockCategory">Category</label>
+                        <label for="restockCategory">Generic Name</label>
                         <input type="text" id="restockCategory" class="form-control" disabled>
                     </div>
                 </div>

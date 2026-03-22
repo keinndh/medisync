@@ -75,16 +75,7 @@
             </svg>
             <span class="nav-text">Dispensing</span>
           </a>
-          <a
-            href="{{ url_for('analytics_page') }}"
-            class="{% if request.endpoint == 'analytics_page' %}active{% endif %}"
-            data-page="analytics"
-          >
-            <svg viewBox="0 0 24 24">
-              <path d="M18 20V10M12 20V4M6 20v-6" />
-            </svg>
-            <span class="nav-text">Analytics</span>
-          </a>
+
           <a
             href="{{ url_for('centers_page') }}"
             class="{% if request.endpoint == 'centers_page' %}active{% endif %}"

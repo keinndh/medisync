@@ -5,21 +5,45 @@
 
 // --- Global API Configuration ---
 // Ensure all fetch requests send cookies for cross-origin authentication
+window.API_BASE = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost')
+  ? 'http://127.0.0.1:5000'
+  : '';  // Empty = same-origin via Netlify proxy (/api/* → Render)
+
+// Global fetch interceptor
+// On production: API calls go through Netlify proxy (/api/*) — same-origin, cookies work everywhere
+// On localhost: API calls go to 127.0.0.1:5000 — attach token header as fallback
 const originalFetch = window.fetch;
 window.fetch = function() {
     let [resource, config] = arguments;
-    if (!config) {
-        config = {};
-    }
-    if (config.credentials === undefined) {
-        config.credentials = 'include';
-    }
-    return originalFetch(resource, config);
-};
+    if (!config) config = {};
 
-window.API_BASE = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost')
-  ? 'http://127.0.0.1:5000'
-  : 'https://medisyncinventory.onrender.com';
+    // Always send cookies (works on desktop; on mobile the proxy makes it same-origin so cookies work too)
+    if (config.credentials === undefined) config.credentials = 'include';
+
+    // On localhost only: attach token header since there's no proxy
+    const isLocalhost = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+    if (isLocalhost) {
+        const token = localStorage.getItem('ms_auth_token');
+        if (token && typeof resource === 'string' && resource.includes('127.0.0.1')) {
+            if (!config.headers) config.headers = {};
+            if (config.headers instanceof Headers) {
+                if (!config.headers.has('X-Auth-Token')) config.headers.set('X-Auth-Token', token);
+            } else {
+                if (!config.headers['X-Auth-Token']) config.headers['X-Auth-Token'] = token;
+            }
+        }
+    }
+
+    return originalFetch(resource, config).then(function(response) {
+        // 401 = session expired or token invalid — redirect to login
+        if (response.status === 401 && typeof resource === 'string' && resource.includes('/api/')) {
+            localStorage.removeItem('ms_auth_token');
+            localStorage.removeItem('ms_user');
+            window.location.href = '/login';
+        }
+        return response;
+    });
+};
 
 // --- Real-time Clock ---
 function updateClock() {
@@ -47,16 +71,27 @@ updateClock();
 
 // --- Load User Info ---
 async function loadUserInfo() {
+  // Show cached user instantly (avoids blank name on slow connections)
+  const cached = localStorage.getItem('ms_user');
+  if (cached) {
+    try {
+      const u = JSON.parse(cached);
+      const nameEl = document.getElementById("headerUserName");
+      if (nameEl) nameEl.textContent = u.full_name || u.username || 'Admin';
+    } catch(e) {}
+  }
+
   try {
     const res = await fetch(window.API_BASE + "/api/me");
     if (!res.ok) return;
     const user = await res.json();
+    // Update cache
+    localStorage.setItem('ms_user', JSON.stringify(user));
     const nameEl = document.getElementById("headerUserName");
     if (nameEl) nameEl.textContent = user.full_name || user.username;
     const picEl = document.getElementById("headerProfilePic");
     if (picEl && user.profile_picture) {
-      picEl.innerHTML =
-        '<img src="' + user.profile_picture + '" alt="Profile">';
+      picEl.innerHTML = '<img src="' + user.profile_picture + '" alt="Profile">';
     }
   } catch (e) {
     /* ignore */
@@ -174,6 +209,8 @@ if (logoutNo)
 if (logoutYes) {
   logoutYes.addEventListener("click", async function () {
     await fetch(window.API_BASE + "/api/logout", { method: "POST" });
+    localStorage.removeItem('ms_auth_token');
+    localStorage.removeItem('ms_user');
     window.location.href = "/login";
   });
 }

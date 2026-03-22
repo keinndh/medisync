@@ -152,5 +152,48 @@
         }
     }
 
+    // --- Export & Archive ---
+    var exportDropdown = document.getElementById('exportDropdown');
+    document.getElementById('exportBtn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        exportDropdown.classList.toggle('show');
+    });
+    document.addEventListener('click', function () { exportDropdown.classList.remove('show'); });
+
+    document.getElementById('exportCsvBtn').addEventListener('click', function () {
+        window.location.href = '/api/logs/export/csv';
+        exportDropdown.classList.remove('show');
+    });
+    
+    document.getElementById('exportPdfBtn').addEventListener('click', function () {
+        window.location.href = '/api/logs/export/pdf';
+        exportDropdown.classList.remove('show');
+    });
+
+    document.getElementById('archiveBtn').addEventListener('click', async function () {
+        if (!confirm('This will export logs older than 6 months to a CSV file and delete them from the database. Proceed?')) return;
+        
+        try {
+            var res = await fetch(window.API_BASE + '/api/logs/archive', { method: 'POST' });
+            if (res.ok) {
+                var blob = await res.blob();
+                var url = window.URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'archived_logs.csv';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                showToast('Logs archived successfully.');
+                loadLogs();
+            } else {
+                var data = await res.json();
+                showToast(data.error || 'No logs to archive or failed.', 'error');
+            }
+        } catch (e) {
+            showToast('Connection error.', 'error');
+        }
+    });
+
     loadLogs();
 })();
