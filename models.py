@@ -230,3 +230,13 @@ class MedicineCategory(db.Model):
 
     def to_dict(self):
         return {'id': self.id, 'name': self.name}
+
+class AuthToken(db.Model):
+    """Persistent auth tokens — safe for serverless (Vercel) deployments."""
+    __tablename__ = 'auth_tokens'
+    id       = db.Column(db.Integer, primary_key=True)
+    token    = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    user_id  = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: __import__('datetime').datetime.utcnow())
+
+    user = db.relationship('User', backref='auth_tokens')

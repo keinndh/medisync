@@ -11,14 +11,14 @@
   <body>
     <div class="login-page">
       <div class="login-bg">
-        <img src="static/images/bg1.jpg" alt="Background" />
+        <img src=\"{{ url_for('static', filename='images/bg1.jpg') }}\" alt="Background" />
       </div>
       <div class="login-container">
         <div class="login-card">
           <div class="login-logos">
-            <div class="logo-placeholder"><img src="static/images/logo1.png" alt="Logo 1" /></div>
-            <div class="logo-placeholder"><img src="static/images/logo2.jpg" alt="Logo 2" /></div>
-            <div class="logo-placeholder"><img src="static/images/logo3.jpg" alt="Logo 3" /></div>
+            <div class="logo-placeholder"><img src=\"{{ url_for('static', filename='images/logo1.png') }}\" alt="Logo 1" /></div>
+            <div class="logo-placeholder"><img src=\"{{ url_for('static', filename='images/logo2.jpg') }}\" alt="Logo 2" /></div>
+            <div class="logo-placeholder"><img src=\"{{ url_for('static', filename='images/logo3.jpg') }}\" alt="Logo 3" /></div>
           </div>
           <h1 class="login-title">MediSync</h1>
           <p class="login-subtitle">Medicine Inventory Management System</p>

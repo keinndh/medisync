@@ -135,7 +135,7 @@
         <!-- Header -->
         <header class="app-header">
           <div class="header-bg">
-            <img src="static/images/bg1.jpg" alt="Main Background" />
+            <img src=\"{{ url_for('static', filename='images/bg1.jpg') }}\" alt="Main Background" />
           </div>
           <div class="header-inner">
             <!-- Hamburger: mobile only -->
@@ -151,7 +151,7 @@
               </svg>
             </button>
             <div class="header-logo">
-              <img src="static/images/logo4.png" alt="Logo" />
+              <img src=\"{{ url_for('static', filename='images/logo4.png') }}\" alt="Logo" />
             </div>
             <div class="header-center">
               <div class="header-line1">MediSync Inventory System</div>

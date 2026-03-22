@@ -10,7 +10,7 @@ from flask import (
     redirect, url_for, send_file, make_response
 )
 from werkzeug.utils import secure_filename
-from models import db, User, Medicine, Center, Dispensing, RequestQueue, ActivityLog, Notification, Recipient, MedicineCategory
+from models import db, User, Medicine, Center, Dispensing, RequestQueue, ActivityLog, Notification, Recipient, MedicineCategory, AuthToken
 
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
@@ -34,7 +34,9 @@ if database_url and database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
 if not database_url:
-    raise ValueError("DATABASE_URL is not set!")
+    # Fallback for build step — runtime will always have DATABASE_URL set via env vars
+    database_url = 'sqlite:///fallback.db'
+    print("WARNING: DATABASE_URL not set — using SQLite fallback. Set DATABASE_URL in Vercel env vars.")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 
@@ -49,7 +51,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = 86400 * 7  # 7 days
 
 with app.app_context():
     try:
-        db.create_all()
+        db.create_all()  # Creates all tables including AuthToken
         if not User.query.filter_by(username='admin').first():
             u = User(username='admin', full_name='System Admin')
             u.set_password('admin123')
@@ -63,11 +65,13 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(os.path.join(os.path.dirname(__file__), 'static', 'images'), exist_ok=True)
 
 # Allow credentials for cross-origin Netlify requests
+# CORS: add your Vercel URL to origins once deployed (e.g. https://medisync.vercel.app)
 CORS(app,
      supports_credentials=True,
      origins=[
          'https://medisync-inventory.netlify.app',
          'https://medisyncinventory.onrender.com',
+         os.getenv('FRONTEND_URL', ''),          # Set this in Vercel env vars
          'http://127.0.0.1:5000',
          'http://localhost:5000',
          'http://localhost:3000',
@@ -77,18 +81,16 @@ CORS(app,
 )
 
 # helpers
-# In-memory token store: token -> user_id
-# (For production, use Redis or a DB table)
-_auth_tokens = {}
-
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         # Try token header first (mobile-friendly, avoids cross-site cookie issues)
         token = request.headers.get('X-Auth-Token') or request.args.get('auth_token')
-        if token and token in _auth_tokens:
-            request.current_user_id = _auth_tokens[token]
-            return f(*args, **kwargs)
+        if token:
+            auth = AuthToken.query.filter_by(token=token).first()
+            if auth:
+                request.current_user_id = auth.user_id
+                return f(*args, **kwargs)
         # Fall back to session cookie (desktop browsers)
         if 'user_id' in session:
             request.current_user_id = session['user_id']
@@ -209,9 +211,11 @@ def api_login():
     if user and user.check_password(password):
         session.permanent = True
         session['user_id'] = user.id
-        # Generate a token for mobile/cross-origin clients
+        # Save token to DB — safe for serverless (no in-memory state)
         token = secrets.token_hex(32)
-        _auth_tokens[token] = user.id
+        auth_token = AuthToken(token=token, user_id=user.id)
+        db.session.add(auth_token)
+        db.session.commit()
         log_activity('Login', f'User {user.username} logged in.')
         return jsonify({'success': True, 'user': user.to_dict(), 'token': token})
     return jsonify({'success': False, 'error': 'Invalid username or password.'}), 401
@@ -222,17 +226,18 @@ def api_login():
 def api_logout():
     log_activity('Logout', 'User logged out.')
     session.clear()
-    # Remove token if provided
+    # Delete token from DB
     token = request.headers.get('X-Auth-Token')
-    if token and token in _auth_tokens:
-        del _auth_tokens[token]
+    if token:
+        AuthToken.query.filter_by(token=token).delete()
+        db.session.commit()
     return jsonify({'success': True})
 
 
 @app.route('/api/me')
 @login_required
 def api_me():
-    user = User.query.get(session['user_id'])
+    user = User.query.get(getattr(request, 'current_user_id', session.get('user_id')))
     return jsonify(user.to_dict())
 
 
@@ -1380,7 +1385,7 @@ def api_mark_all_read():
 @app.route('/api/settings/profile', methods=['PUT'])
 @login_required
 def api_update_profile():
-    user = User.query.get(session['user_id'])
+    user = User.query.get(getattr(request, 'current_user_id', session.get('user_id')))
     data = request.get_json()
     if data.get('full_name'):
         user.full_name = data['full_name']
@@ -1404,10 +1409,11 @@ def api_upload_picture():
     file = request.files['picture']
     if file.filename == '':
         return jsonify({'error': 'Empty filename.'}), 400
-    filename = secure_filename(f"profile_{session['user_id']}_{file.filename}")
+    _uid = getattr(request, 'current_user_id', session.get('user_id'))
+    filename = secure_filename(f"profile_{_uid}_{file.filename}")
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
-    user = User.query.get(session['user_id'])
+    user = User.query.get(_uid)
     user.profile_picture = f'/static/uploads/{filename}'
     db.session.commit()
     log_activity('Edit', 'Updated profile picture')

@@ -7,7 +7,7 @@
 // Ensure all fetch requests send cookies for cross-origin authentication
 window.API_BASE = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost')
   ? 'http://127.0.0.1:5000'
-  : '';  // Empty = same-origin via Netlify proxy (/api/* → Render)
+  : '';  // Same-origin on Vercel (Flask serves both frontend + API)
 
 // Global fetch interceptor
 // On production: API calls go through Netlify proxy (/api/*) — same-origin, cookies work everywhere
