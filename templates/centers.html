@@ -54,6 +54,59 @@
     </div>
 </div>
 
+<!-- Edit Center Modal -->
+<div class="modal-overlay" id="editCenterModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h3>Edit Center</h3>
+            <button class="modal-close" onclick="closeModal('editCenterModal')">
+                <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="editCenterForm">
+                <input type="hidden" id="editCenterId">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="editCenterNameInput">Center Name</label>
+                    <input type="text" id="editCenterNameInput" class="form-control" required>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('editCenterModal')">Cancel</button>
+            <button type="submit" form="editCenterForm" class="btn btn-primary">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add Recipient Modal -->
+<div class="modal-overlay" id="addRecipientModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h3>Add Recipient</h3>
+            <button class="modal-close" onclick="closeModal('addRecipientModal')">
+                <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="addRecipientForm">
+                <div class="form-group">
+                    <label for="newRecipientName">Recipient Name</label>
+                    <input type="text" id="newRecipientName" class="form-control" placeholder="Full Name" required>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="newRecipientContact">Contact Number (Optional)</label>
+                    <input type="text" id="newRecipientContact" class="form-control" placeholder="e.g. 09123456789">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('addRecipientModal')">Cancel</button>
+            <button type="submit" form="addRecipientForm" class="btn btn-primary">Add Recipient</button>
+        </div>
+    </div>
+</div>
+
 <!-- Centers List -->
 <div id="centersList">
     <div class="empty-state">
@@ -77,10 +130,22 @@
                 <button class="btn btn-outline btn-sm" id="selectAllRecipientsBtn" style="display:none;">Select All</button>
                 <button class="btn btn-coral btn-sm" id="deleteSelectedRecipientsBtn" style="display:none;">Delete Selected</button>
                 <button class="btn btn-ghost btn-sm" id="cancelRecipientSelectBtn" style="display:none;">Cancel</button>
-                <button class="btn btn-outline btn-sm" id="enterRecipientDeleteModeBtn">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    Manage
-                </button>
+                <div class="export-btn-wrap" id="recipientOptionsWrap">
+                    <button class="btn btn-outline btn-sm" id="recipientOptionsBtn" title="Manage Recipients">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        Manage
+                    </button>
+                    <div class="export-dropdown" id="recipientOptionsDropdown">
+                        <button id="showAddRecipientBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Add Recipient
+                        </button>
+                        <button id="enterRecipientDeleteModeBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            Delete Recipient(s)
+                        </button>
+                    </div>
+                </div>
             </div>
             <div id="recipientsCardGrid" class="recipient-grid">
                 <!-- Recipient cards will be loaded here -->

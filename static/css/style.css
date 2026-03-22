@@ -430,9 +430,9 @@ select.form-control {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: rgba(255, 255, 255, 0.5);
-  font-weight: 600;
-  font-size: 0.875rem;
+  color: var(--red);
+  font-weight: 700;
+  font-size: 0.9rem;
   text-decoration: none;
   transition: var(--transition);
 }
@@ -441,12 +441,12 @@ select.form-control {
   height: 20px;
   stroke: currentColor;
   fill: none;
-  stroke-width: 1.8;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 .sidebar-footer a:hover {
-  color: var(--coral);
+  color: #ff5c53;
 }
 
 /* Main content area */
@@ -2513,7 +2513,10 @@ select.form-control {
 
 /* Mobile header: compact, show name + time, hide date */
 @media (max-width: 768px) {
-  .header-center { display: none !important; }
+  .header-center { display: block !important; }
+  .header-center .header-line1 { font-size: 0.85rem; }
+  .header-center .header-line2 { font-size: 0.7rem; }
+  .header-center .header-line3 { display: none; }
   .header-profile-info { display: flex !important; }
   .header-datetime .hdate { display: none; }
   .header-datetime .htime { font-size: 0.75rem; }
@@ -2521,5 +2524,6 @@ select.form-control {
   .header-inner {
     padding: 8px 12px !important;
     min-height: 56px;
+    gap: 8px;
   }
 }

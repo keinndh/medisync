@@ -91,7 +91,9 @@ async function loadUserInfo() {
     if (nameEl) nameEl.textContent = user.full_name || user.username;
     const picEl = document.getElementById("headerProfilePic");
     if (picEl && user.profile_picture) {
-      picEl.innerHTML = '<img src="' + user.profile_picture + '" alt="Profile">';
+      let picUrl = user.profile_picture;
+      if (picUrl.startsWith('/')) picUrl = window.API_BASE + picUrl;
+      picEl.innerHTML = '<img src="' + picUrl + '" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">';
     }
   } catch (e) {
     /* ignore */

@@ -1117,6 +1117,22 @@ def api_add_center():
     log_activity('Add', f'Added center: {name}')
     return jsonify(c.to_dict()), 201
 
+@app.route('/api/centers/<int:center_id>', methods=['PUT'])
+@login_required
+def api_edit_center(center_id):
+    c = Center.query.get_or_404(center_id)
+    data = request.get_json()
+    new_name = data.get('name', '').strip()
+    if not new_name:
+        return jsonify({'error': 'Center name is required.'}), 400
+    if Center.query.filter(Center.name == new_name, Center.id != center_id).first():
+        return jsonify({'error': 'Center name already exists.'}), 400
+    old_name = c.name
+    c.name = new_name
+    db.session.commit()
+    log_activity('Edit', f'Renamed center "{old_name}" to "{new_name}"')
+    return jsonify(c.to_dict())
+
 @app.route('/api/centers/<int:center_id>', methods=['DELETE'])
 @login_required
 def api_delete_center(center_id):
@@ -1450,6 +1466,7 @@ def api_upload_picture():
         return jsonify({'error': 'Empty filename.'}), 400
     _uid = getattr(request, 'current_user_id', session.get('user_id'))
     filename = secure_filename(f"profile_{_uid}_{file.filename}")
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
     user = User.query.get(_uid)

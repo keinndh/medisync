@@ -28,12 +28,14 @@
       <nav class="sidebar" id="sidebar">
         <div class="sidebar-brand">
           <div class="sidebar-brand-inner">
+            <div class="sidebar-logo" style="width: 38px; height: 38px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+              <img src="{{ url_for('static', filename='images/logo4.png') }}" alt="Logo" style="width: 100%; height: 100%; object-fit: contain;" />
+            </div>
             <div>
               <div class="brand-title">MediSync</div>
-              <div class="brand-subtitle">Medicine Inventory Management System</div>
-              <div class="brand-collapsed-title" style="display: none; font-size: 1.5rem; font-weight: 800; color: #fff;">M</div>
+              <div class="brand-subtitle">Medicine Inventory</div>
+              <div class="brand-collapsed-title" style="display: none;"></div>
             </div>
-            <!-- Toggle moved to header -->
           </div>
         </div>
         <div class="sidebar-nav">
@@ -150,9 +152,7 @@
                 <line x1="3" y1="18" x2="21" y2="18"></line>
               </svg>
             </button>
-            <div class="header-logo">
-              <img src="{{ url_for('static', filename='images/logo4.png') }}" alt="Logo" />
-            </div>
+            <!-- Removed logo from header to sidebar -->
             <div class="header-center">
               <div class="header-line1">MediSync Inventory System</div>
               <div class="header-line2">Vitali Health District</div>

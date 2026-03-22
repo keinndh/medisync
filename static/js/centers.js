@@ -104,6 +104,9 @@
                     '<svg viewBox="0 0 24 24" style="width:20px;height:20px;margin-right:12px;transition:0.3s;"><polyline points="9 6 15 12 9 18"/></svg>' +
                     escapeHtml(c.name) + '</div>' +
                     '<div style="display:flex;gap:12px;align-items:center;">' +
+                    '<button class="btn btn-ghost btn-sm center-action-btn" onclick="editCenterName(' + c.id + ', \'' + escapeHtml(c.name).replace(/'/g, "\\'") + '\')" style="font-weight:700;text-transform:uppercase;font-size:0.75rem;letter-spacing:0.5px;color:var(--text);">' +
+                    'Edit Center' +
+                    '</button>' +
                     '<button class="btn btn-ghost btn-sm center-action-btn" onclick="showRecipients(' + c.id + ', \'' + escapeHtml(c.name).replace(/'/g, "\\'") + '\')" style="font-weight:700;text-transform:uppercase;font-size:0.75rem;letter-spacing:0.5px;color:var(--primary);">' +
                     'View Recipients' +
                     '</button>' +
@@ -115,6 +118,33 @@
             }).join('');
         } catch (e) { /* ignore */ }
     }
+
+    window.editCenterName = function(id, name) {
+        document.getElementById('editCenterId').value = id;
+        document.getElementById('editCenterNameInput').value = name;
+        openModal('editCenterModal');
+        document.getElementById('editCenterNameInput').focus();
+    };
+
+    document.getElementById('editCenterForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        var id = document.getElementById('editCenterId').value;
+        var name = document.getElementById('editCenterNameInput').value.trim();
+        if (!name) { showToast('Center name is required.', 'error'); return; }
+        try {
+            var res = await fetch(window.API_BASE + '/api/centers/' + id, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name })
+            });
+            var data = await res.json();
+            if (res.ok) {
+                showToast('Center updated successfully.');
+                closeModal('editCenterModal');
+                loadCenters();
+            } else { showToast(data.error || 'Failed.', 'error'); }
+        } catch(e) { showToast('Connection error.', 'error'); }
+    });
 
     window.deleteCenter = async function (id, name) {
         if (!confirm('Are you sure you want to delete center "' + name + '"?')) return;
@@ -182,9 +212,52 @@
         document.getElementById('selectAllRecipientsBtn').style.display = 'none';
         document.getElementById('deleteSelectedRecipientsBtn').style.display = 'none';
         document.getElementById('cancelRecipientSelectBtn').style.display = 'none';
+        document.getElementById('recipientOptionsWrap').style.display = '';
         await loadRecipients(centerId);
         openModal('recipientsModal');
     };
+
+    // --- Recipient Options Dropdown ---
+    var recOptDropdown = document.getElementById('recipientOptionsDropdown');
+    document.getElementById('recipientOptionsBtn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        recOptDropdown.classList.toggle('show');
+    });
+    document.addEventListener('click', function () { 
+        if(recOptDropdown) recOptDropdown.classList.remove('show'); 
+    });
+
+    document.getElementById('showAddRecipientBtn').addEventListener('click', function() {
+        if(recOptDropdown) recOptDropdown.classList.remove('show');
+        document.getElementById('newRecipientName').value = '';
+        document.getElementById('newRecipientContact').value = '';
+        openModal('addRecipientModal');
+        setTimeout(() => document.getElementById('newRecipientName').focus(), 100);
+    });
+
+    document.getElementById('addRecipientForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        var name = document.getElementById('newRecipientName').value.trim();
+        var contact = document.getElementById('newRecipientContact').value.trim();
+        if (!name) { showToast('Name is required.', 'error'); return; }
+        try {
+            var res = await fetch(window.API_BASE + '/api/recipients', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, contact: contact, center_id: currentCenterId })
+            });
+            var data = await res.json();
+            if (res.ok) {
+                showToast('Recipient added successfully.');
+                closeModal('addRecipientModal');
+                loadRecipients(currentCenterId);
+            } else {
+                showToast(data.error || 'Failed.', 'error');
+            }
+        } catch(e) {
+            showToast('Connection error.', 'error');
+        }
+    });
 
     async function loadRecipients(centerId) {
         try {
@@ -214,7 +287,8 @@
     // Recipient delete mode
     document.getElementById('enterRecipientDeleteModeBtn').addEventListener('click', function () {
         recipientDeleteMode = true;
-        this.style.display = 'none';
+        if(recOptDropdown) recOptDropdown.classList.remove('show');
+        document.getElementById('recipientOptionsWrap').style.display = 'none';
         document.getElementById('selectAllRecipientsBtn').style.display = '';
         document.getElementById('deleteSelectedRecipientsBtn').style.display = '';
         document.getElementById('cancelRecipientSelectBtn').style.display = '';
@@ -228,7 +302,7 @@
 
     document.getElementById('cancelRecipientSelectBtn').addEventListener('click', function () {
         recipientDeleteMode = false;
-        document.getElementById('enterRecipientDeleteModeBtn').style.display = '';
+        document.getElementById('recipientOptionsWrap').style.display = '';
         document.getElementById('selectAllRecipientsBtn').style.display = 'none';
         document.getElementById('deleteSelectedRecipientsBtn').style.display = 'none';
         document.getElementById('cancelRecipientSelectBtn').style.display = 'none';
