@@ -110,7 +110,6 @@ def login_required(f):
         if request.is_json or request.path.startswith('/api/'):
             return jsonify({'error': 'Unauthorized'}), 401
         return redirect(url_for('login_page'))
-        return f(*args, **kwargs)
     return decorated
 
 
