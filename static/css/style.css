@@ -345,8 +345,8 @@ select.form-control {
 .sidebar-brand-inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 12px;
 }
 .sidebar-brand .brand-title {
   font-size: 1.25rem;
@@ -748,22 +748,30 @@ select.form-control {
 }
 .page-title-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   margin-bottom: 24px;
   flex-wrap: wrap;
   gap: 12px;
 }
+.page-title-row > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .page-title {
+  display: block;
   font-size: 1.5rem;
   font-weight: 800;
   color: var(--navy);
   letter-spacing: -0.5px;
 }
 .page-subtitle {
+  display: block;
   font-size: 0.9rem;
   color: var(--text-secondary);
   font-weight: 500;
+  margin: 0;
 }
 
 /* --- Cards --- */
@@ -1970,6 +1978,10 @@ select.form-control {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     border-radius: var(--radius-sm);
+    width: 100%;
+  }
+  .data-table {
+    min-width: 700px;
   }
   .data-table th,
   .data-table td {
@@ -2514,7 +2526,12 @@ select.form-control {
 
 /* Mobile header: compact, show name + time, hide date */
 @media (max-width: 768px) {
-  .header-inner { justify-content: space-between; }
+  .header-inner {
+    justify-content: space-between;
+    padding: 8px 12px !important;
+    min-height: 56px;
+    gap: 8px;
+  }
   .header-center { display: block !important; flex: 1; text-align: center; }
   .header-center .header-line1 { font-size: 0.85rem; }
   .header-center .header-line2 { font-size: 0.7rem; }
@@ -2523,9 +2540,4 @@ select.form-control {
   .header-datetime .hdate { display: none; }
   .header-datetime .htime { font-size: 0.75rem; }
   .header-profile-name { font-size: 0.8rem; }
-  .header-inner {
-    padding: 8px 12px !important;
-    min-height: 56px;
-    gap: 8px;
-  }
 }

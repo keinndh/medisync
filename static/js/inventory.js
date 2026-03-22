@@ -36,7 +36,10 @@
     // --- Genric Name Add Logic ---
     document.getElementById('addCategoryBtn').addEventListener('click', async function() {
         var newCat = document.getElementById('medCategory').value.trim();
-        if (!newCat) return;
+        if (!newCat) {
+            showToast('Please enter a generic name.', 'error');
+            return;
+        }
 
         var lowerCat = newCat.toLowerCase();
         var exists = systemCategories.find(c => c.toLowerCase() === lowerCat);

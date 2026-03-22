@@ -746,7 +746,7 @@ def api_dispense():
     if total_stock == 0:
         return jsonify({'error': f'No stock available for {article_name}.'}), 400
 
-    if total_stock <= qty:
+    if total_stock < qty:
         confirm_action = data.get('confirm_action')
         
         if not confirm_action:
