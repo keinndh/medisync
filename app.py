@@ -24,7 +24,12 @@ def manila_today():
     return manila_now().date()
 
 # app configuration
-app = Flask(__name__)
+# Explicitly set paths so Flask finds static/ and templates/ from root
+# regardless of where the entry point (api/index.py) is located
+_root = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__,
+            static_folder=os.path.join(_root, 'static'),
+            template_folder=os.path.join(_root, 'templates'))
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'medisync-dev-key')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
@@ -60,7 +65,7 @@ except Exception:
     pass
 
 def init_db():
-    """Initialize DB tables — called lazily on first request."""
+    """Initialize DB tables — called on startup."""
     try:
         db.create_all()
         if not User.query.filter_by(username='admin').first():
@@ -68,9 +73,14 @@ def init_db():
             u.set_password('admin123')
             db.session.add(u)
             db.session.commit()
-            print("Default admin created.")
+            print("Default admin created successfully.")
+        else:
+            print("DB init OK — admin already exists.")
     except Exception as e:
+        import traceback
         print(f"DB init error: {e}")
+        print(traceback.format_exc())
+        db.session.rollback()
 
 # Initialize on startup (works for both local and Vercel)
 with app.app_context():
@@ -159,6 +169,24 @@ def check_expirations():
                 )
     db.session.commit()
 
+
+
+
+@app.route('/api/setup')
+def api_setup():
+    """One-time setup endpoint — creates tables and default admin if missing."""
+    try:
+        db.create_all()
+        if not User.query.filter_by(username='admin').first():
+            u = User(username='admin', full_name='System Admin')
+            u.set_password('admin123')
+            db.session.add(u)
+            db.session.commit()
+            return jsonify({'success': True, 'message': 'Admin user created. Username: admin, Password: admin123'})
+        else:
+            return jsonify({'success': True, 'message': 'Admin already exists. Tables OK.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # pages routes 
 @app.route('/')
