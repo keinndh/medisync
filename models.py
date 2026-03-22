@@ -1,14 +1,14 @@
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, date, timedelta, timezone
+
 MANILA_TZ = timezone(timedelta(hours=8))
 
 def manila_now():
-    return manila_now(MANILA_TZ).replace(tzinfo=None)
+    return datetime.now(MANILA_TZ).replace(tzinfo=None)
 
 def manila_today():
     return manila_now().date()
-
 db = SQLAlchemy()
 
 
