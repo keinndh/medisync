@@ -8,7 +8,8 @@
             document.getElementById('settingsName').value = user.full_name || '';
             document.getElementById('settingsUsername').value = user.username || '';
             if (user.profile_picture) {
-                var initTs = '?t=' + Date.now();
+                // base64 data URLs don't need cache-busting; file paths do
+                var initTs = user.profile_picture.startsWith('data:') ? '' : '?t=' + Date.now();
                 document.getElementById('settingsProfilePic').innerHTML = '<img src="' + user.profile_picture + initTs + '" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
             }
         } catch (e) { /* ignore */ }
@@ -58,16 +59,16 @@
             var data = await res.json();
             if (res.ok) {
                 showToast('Profile picture updated.');
-                var ts = '?t=' + Date.now();
+                var ts = data.profile_picture.startsWith('data:') ? '' : '?t=' + Date.now();
                 var picUrl = data.profile_picture + ts;
                 document.getElementById('settingsProfilePic').innerHTML = '<img src="' + picUrl + '" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
                 var headerPic = document.getElementById('headerProfilePic');
-                if (headerPic) headerPic.innerHTML = '<img src="' + picUrl + '" alt="Profile" style="width:100%;height:100%;object-fit:cover;">';
-                // Update sessionStorage cache so other pages reflect the new picture
+                if (headerPic) headerPic.innerHTML = '<img src="' + picUrl + '" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+                // Update localStorage cache so other pages reflect the new picture
                 try {
-                    var cached = JSON.parse(sessionStorage.getItem('ms_user') || '{}');
+                    var cached = JSON.parse(localStorage.getItem('ms_user') || '{}');
                     cached.profile_picture = data.profile_picture;
-                    sessionStorage.setItem('ms_user', JSON.stringify(cached));
+                    localStorage.setItem('ms_user', JSON.stringify(cached));
                 } catch(e) {}
             } else { showToast(data.error || 'Upload failed.', 'error'); }
         } catch (e) { showToast('Connection error.', 'error'); }

@@ -18,7 +18,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     full_name = db.Column(db.String(120), nullable=False, default='Admin')
-    profile_picture = db.Column(db.String(256), default='')
+    profile_picture = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: manila_now())
 
     def set_password(self, password):

@@ -9,6 +9,33 @@ window.API_BASE = (window.location.hostname === '127.0.0.1' || window.location.h
   ? 'http://127.0.0.1:5000'
   : '';  // Same-origin on Vercel (Flask serves both frontend + API)
 
+// --- Auto logout after 60 minutes of inactivity ---
+(function() {
+  var TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes
+  var inactivityTimer;
+
+  function doLogout() {
+    localStorage.removeItem('ms_auth_token');
+    localStorage.removeItem('ms_user');
+    window.location.href = '/login?reason=timeout';
+  }
+
+  function resetTimer() {
+    clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(doLogout, TIMEOUT_MS);
+  }
+
+  // Reset on any user activity
+  ['click', 'mousemove', 'keydown', 'scroll', 'touchstart', 'mousedown'].forEach(function(evt) {
+    document.addEventListener(evt, resetTimer, { passive: true, capture: true });
+  });
+
+  // Start timer on page load
+  resetTimer();
+})();
+
+
+
 // Global fetch interceptor
 // On production: API calls go through Netlify proxy (/api/*) — same-origin, cookies work everywhere
 // On localhost: API calls go to 127.0.0.1:5000 — attach token header as fallback
@@ -23,7 +50,7 @@ window.fetch = function() {
     // On localhost only: attach token header since there's no proxy
     const isLocalhost = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
     if (isLocalhost) {
-        const token = sessionStorage.getItem('ms_auth_token');
+        const token = localStorage.getItem('ms_auth_token');
         if (token && typeof resource === 'string' && resource.includes('127.0.0.1')) {
             if (!config.headers) config.headers = {};
             if (config.headers instanceof Headers) {
@@ -37,8 +64,8 @@ window.fetch = function() {
     return originalFetch(resource, config).then(function(response) {
         // 401 = session expired or token invalid — redirect to login
         if (response.status === 401 && typeof resource === 'string' && resource.includes('/api/')) {
-            sessionStorage.removeItem('ms_auth_token');
-            sessionStorage.removeItem('ms_user');
+            localStorage.removeItem('ms_auth_token');
+            localStorage.removeItem('ms_user');
             window.location.href = '/login';
         }
         return response;
@@ -72,7 +99,7 @@ updateClock();
 // --- Load User Info ---
 async function loadUserInfo() {
   // Show cached user instantly (avoids blank name on slow connections)
-  const cached = sessionStorage.getItem('ms_user');
+  const cached = localStorage.getItem('ms_user');
   if (cached) {
     try {
       const u = JSON.parse(cached);
@@ -86,14 +113,15 @@ async function loadUserInfo() {
     if (!res.ok) return;
     const user = await res.json();
     // Update cache
-    sessionStorage.setItem('ms_user', JSON.stringify(user));
+    localStorage.setItem('ms_user', JSON.stringify(user));
     const nameEl = document.getElementById("headerUserName");
     if (nameEl) nameEl.textContent = user.full_name || user.username;
     const picEl = document.getElementById("headerProfilePic");
     if (picEl && user.profile_picture) {
+      // Supports both base64 data URLs and legacy /static/uploads/ paths
       let picUrl = user.profile_picture;
       if (picUrl.startsWith('/')) picUrl = window.API_BASE + picUrl;
-      picEl.innerHTML = '<img src="' + picUrl + '" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">';
+      picEl.innerHTML = '<img src="' + picUrl + '" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
     }
   } catch (e) {
     /* ignore */
@@ -211,8 +239,8 @@ if (logoutNo)
 if (logoutYes) {
   logoutYes.addEventListener("click", async function () {
     await fetch(window.API_BASE + "/api/logout", { method: "POST" });
-    sessionStorage.removeItem('ms_auth_token');
-    sessionStorage.removeItem('ms_user');
+    localStorage.removeItem('ms_auth_token');
+    localStorage.removeItem('ms_user');
     window.location.href = "/login";
   });
 }
@@ -224,12 +252,50 @@ const mobileToggle = document.getElementById("hamburgerMenu");
 const sidebar = document.querySelector(".sidebar");
 const sidebarOverlay = document.getElementById("sidebarOverlay");
 
+function isTabletWidth() {
+  return window.innerWidth > 768 && window.innerWidth <= 1024;
+}
+
 if (sidebarToggleBtn && appLayout) {
   sidebarToggleBtn.addEventListener("click", function () {
-    appLayout.classList.toggle("collapsed");
-    localStorage.setItem("sidebarCollapsed", appLayout.classList.contains("collapsed"));
+    if (isTabletWidth()) {
+      // At tablet/half-screen: toggle "expanded" class (default is collapsed)
+      appLayout.classList.toggle("expanded");
+      localStorage.setItem("sidebarExpanded", appLayout.classList.contains("expanded"));
+    } else {
+      // At full desktop: toggle "collapsed" class (default is expanded)
+      appLayout.classList.toggle("collapsed");
+      localStorage.setItem("sidebarCollapsed", appLayout.classList.contains("collapsed"));
+    }
   });
 }
+
+// Restore sidebar state on load
+(function() {
+  if (isTabletWidth()) {
+    if (localStorage.getItem("sidebarExpanded") === "true") {
+      appLayout && appLayout.classList.add("expanded");
+    }
+  } else {
+    if (localStorage.getItem("sidebarCollapsed") === "true") {
+      appLayout && appLayout.classList.add("collapsed");
+    }
+  }
+})();
+
+// Handle resize — switch modes cleanly
+window.addEventListener("resize", function() {
+  if (!appLayout) return;
+  if (window.innerWidth <= 768) {
+    appLayout.classList.remove("collapsed", "expanded");
+  } else if (isTabletWidth()) {
+    appLayout.classList.remove("collapsed");
+    if (localStorage.getItem("sidebarExpanded") === "true") appLayout.classList.add("expanded");
+  } else {
+    appLayout.classList.remove("expanded");
+    if (localStorage.getItem("sidebarCollapsed") === "true") appLayout.classList.add("collapsed");
+  }
+});
 
 if (mobileToggle && sidebar && sidebarOverlay) {
   mobileToggle.addEventListener("click", function () {

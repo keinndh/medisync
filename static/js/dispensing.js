@@ -425,6 +425,7 @@
                 document.getElementById('queueDetailPrioritize').dataset.id = id;
                 document.getElementById('queueDetailFulfill').dataset.id = id;
                 document.getElementById('queueDetailUnprioritize').dataset.id = id;
+                document.getElementById('queueDetailRemove').dataset.id = id;
                 
                 // Toggle prioritize/unprioritize buttons
                 if (q.priority > 0) {
@@ -464,6 +465,21 @@
         var id = parseInt(this.dataset.id);
         if (id) { closeModal('queueDetailModal'); fulfillQueue(id); }
     });
+    document.getElementById('queueDetailRemove').addEventListener('click', async function () {
+        var id = this.dataset.id;
+        if (!confirm('Are you sure you want to remove this request from the queue?')) return;
+        try {
+            var res = await fetch(window.API_BASE + '/api/queue/' + id, { method: 'DELETE' });
+            if (res.ok) {
+                showToast('Request removed from queue.');
+                closeModal('queueDetailModal');
+                loadQueue();
+            } else {
+                var data = await res.json();
+                showToast(data.error || 'Failed to remove.', 'error');
+            }
+        } catch (e) { showToast('Connection error.', 'error'); }
+    });
 
     window.prioritizeQueue = async function (id) {
         try {
@@ -492,6 +508,24 @@
     };
 
     // --- Today's Distribution ---
+
+    function formatRemarks(remarks) {
+        if (!remarks) return '';
+        var map = {
+            'dispense_all': 'Dispensed All',
+            'queue_remaining': 'Queued Remaining',
+            'cancel_remaining': 'Cancelled Remaining',
+            'queue_all': 'Queued All',
+            'Partial dispense': 'Partial Dispense',
+            'Partial dispense, remaining cancelled': 'Partial Dispense — Remaining Cancelled',
+            'Fulfilled from queue': 'Fulfilled from Queue'
+        };
+        // Try exact match first
+        if (map[remarks.trim()]) return map[remarks.trim()];
+        // Otherwise clean up underscores and capitalize words
+        return remarks.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+    }
+
     async function loadToday() {
         try {
             var res = await fetch(window.API_BASE + '/api/dispense/today');
@@ -505,7 +539,7 @@
                 return '<tr><td>' + escapeHtml(d.dispenser_name) + '</td><td>' + formatDateTime(d.date_time) +
                     '</td><td>' + escapeHtml(d.medicine_name) + '</td><td>' + d.quantity_dispensed +
                     '</td><td>' + escapeHtml(d.recipient_name) + '</td><td>' + escapeHtml(d.recipient_contact) +
-                    '</td><td>' + escapeHtml(d.center_name) + '</td><td>' + escapeHtml(d.remarks) +
+                    '</td><td>' + escapeHtml(d.center_name) + '</td><td>' + formatRemarks(d.remarks) +
                     '</td><td><a href="/api/dispense/' + d.id + '/receipt" class="btn btn-ghost btn-sm" target="_blank">' +
                     '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
                     ' PDF</a></td></tr>';

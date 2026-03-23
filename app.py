@@ -52,7 +52,7 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_NAME'] = 'ms_session'
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)  # 1 hour inactivity timeout
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 60 minutes inactivity timeout
 
 # Use /tmp for uploads on Vercel (only writable directory in serverless)
 VERCEL = os.getenv('VERCEL', False)
@@ -248,7 +248,7 @@ def api_login():
     password = data.get('password', '')
     user = User.query.filter_by(username=username).first()
     if user and user.check_password(password):
-        session.permanent = False
+        session.permanent = True
         session['user_id'] = user.id
         # Save token to DB — safe for serverless (no in-memory state)
         token = secrets.token_hex(32)
@@ -926,6 +926,20 @@ def api_queue_unprioritize(q_id):
     return jsonify(item.to_dict())
 
 
+
+
+@app.route('/api/queue/<int:q_id>', methods=['DELETE'])
+@login_required
+def api_queue_delete(q_id):
+    item = RequestQueue.query.get_or_404(q_id)
+    recipient = item.recipient_name
+    medicine = item.medicine.article_name if item.medicine else 'Unknown'
+    db.session.delete(item)
+    db.session.commit()
+    log_activity('Delete', f'Removed queue request #{q_id} for {recipient} ({medicine})')
+    return jsonify({'success': True})
+
+
 @app.route('/api/queue/<int:q_id>/fulfill', methods=['PUT'])
 @login_required
 def api_queue_fulfill(q_id):
@@ -1392,12 +1406,18 @@ def api_upload_picture():
     if file.filename == '':
         return jsonify({'error': 'Empty filename.'}), 400
     _uid = getattr(request, 'current_user_id', session.get('user_id'))
-    filename = secure_filename(f"profile_{_uid}_{file.filename}")
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(filepath)
     user = User.query.get(_uid)
-    user.profile_picture = f'/static/uploads/{filename}'
+
+    # Read file and store as base64 data URL — works on Vercel (no persistent filesystem)
+    import base64
+    file_bytes = file.read()
+    if len(file_bytes) > 2 * 1024 * 1024:  # 2MB limit
+        return jsonify({'error': 'Image too large. Max 2MB.'}), 400
+    mime = file.content_type or 'image/jpeg'
+    b64 = base64.b64encode(file_bytes).decode('utf-8')
+    data_url = f'data:{mime};base64,{b64}'
+
+    user.profile_picture = data_url
     db.session.commit()
     log_activity('Edit', 'Updated profile picture')
     return jsonify(user.to_dict())

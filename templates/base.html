@@ -12,19 +12,14 @@
       name="description"
       content="MediSync - Medicine Inventory Management System for Health Centers"
     />
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='css/style.css') }}"
-    />
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.ico') }}" />
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/favicon.ico') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.png') }}" />
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/favicon.png') }}" />
   </head>
   <body class="preload">
     <div class="app-layout" id="appLayout">
       <script>
-        if (localStorage.getItem("sidebarCollapsed") === "true") {
-          document.getElementById('appLayout').classList.add('collapsed');
-        }
+        // Sidebar state restored by app.js after load to handle both desktop/tablet modes
       </script>
       <!-- Sidebar -->
       <nav class="sidebar" id="sidebar">
@@ -35,7 +30,7 @@
             </div>
             <div>
               <div class="brand-title">MediSync</div>
-              <div class="brand-subtitle">Medicine Inventory</div>
+              <div class="brand-subtitle">Medicine Inventory and Management System</div>
               <div class="brand-collapsed-title" style="display: none;"></div>
             </div>
           </div>
@@ -156,7 +151,7 @@
             </button>
             <!-- Removed logo from header to sidebar -->
             <div class="header-center">
-              <div class="header-line1">MediSync Inventory System</div>
+              <div class="header-line1">MediSync Inventory and Management System</div>
               <div class="header-line2">Vitali Health District</div>
               <div class="header-line3">Mialim Vitali, Zamboanga City</div>
             </div>

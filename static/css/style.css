@@ -1860,19 +1860,28 @@ select.form-control {
 }
 
 /* Responsiveness Fixes */
-@media (max-width: 1024px) {
-  :root {
-    --sidebar-width: 72px;
+@media (min-width: 769px) and (max-width: 1024px) {
+  /* At half-screen/tablet widths: auto-collapse sidebar to icon-only
+     UNLESS the user has explicitly expanded it (not collapsed) */
+  .app-layout:not(.expanded) .sidebar {
+    width: 72px;
   }
-  .sidebar-brand .brand-title,
-  .sidebar-brand .brand-subtitle,
-  .sidebar-nav a .nav-text,
-  .sidebar-footer a .nav-text {
+  .app-layout:not(.expanded) .main-content {
+    margin-left: 72px;
+  }
+  .app-layout:not(.expanded) .sidebar-brand .brand-title,
+  .app-layout:not(.expanded) .sidebar-brand .brand-subtitle,
+  .app-layout:not(.expanded) .sidebar-nav a .nav-text,
+  .app-layout:not(.expanded) .sidebar-footer a .nav-text {
     display: none;
   }
-  .sidebar-nav a { justify-content: center; padding: 14px 0; }
-  .sidebar-brand { padding: 20px 0; text-align: center; }
-  .sidebar-brand-inner { justify-content: center; }
+  .app-layout:not(.expanded) .sidebar-nav a { justify-content: center; padding: 14px 0; }
+  .app-layout:not(.expanded) .sidebar-brand { padding: 20px 0; text-align: center; }
+  .app-layout:not(.expanded) .sidebar-brand-inner { justify-content: center; }
+
+  /* When expanded at this breakpoint */
+  .app-layout.expanded .sidebar { width: var(--sidebar-width); }
+  .app-layout.expanded .main-content { margin-left: var(--sidebar-width); }
 }
 
 @media (max-width: 768px) {

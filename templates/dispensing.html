@@ -188,11 +188,11 @@
             <p id="confirmDispenseMessage" style="margin-bottom: 16px;"></p>
         </div>
         <div class="modal-footer" style="flex-direction: column; align-items: stretch; gap: 8px;">
-            <button class="btn btn-success" id="btnDispenseAll">Dispense All Available</button>
+            <button class="btn btn-primary" id="btnDispenseAll">Dispense All Available</button>
             <button class="btn btn-primary" id="btnDispenseAndQueue">Dispense Half &amp; Queue Remaining</button>
-            <button class="btn btn-outline" id="btnDispenseAndCancel">Dispense Half &amp; Cancel Remaining</button>
-            <button class="btn btn-coral" id="btnQueueAll">Queue All</button>
-            <button class="btn btn-ghost" onclick="closeModal('confirmDispenseModal')">Cancel</button>
+            <button class="btn btn-primary" id="btnDispenseAndCancel">Dispense Half &amp; Cancel Remaining</button>
+            <button class="btn btn-primary" id="btnQueueAll">Queue All</button>
+            <button class="btn btn-coral" onclick="closeModal('confirmDispenseModal')">Cancel</button>
         </div>
     </div>
 </div>
@@ -209,6 +209,7 @@
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" onclick="closeModal('queueDetailModal')">Close</button>
+            <button class="btn btn-coral" id="queueDetailRemove">Remove from Queue</button>
             <button class="btn btn-yellow" id="queueDetailUnprioritize" style="display:none;">Unprioritize Request</button>
             <button class="btn btn-primary" id="queueDetailPrioritize">Prioritize Request</button>
             <button class="btn btn-success" id="queueDetailFulfill">Fulfill Request</button>

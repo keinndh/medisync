@@ -7,8 +7,8 @@
     <title>MediSync - Login</title>
     <meta name="description" content="MediSync Medicine Inventory System - Admin Login" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.ico') }}" />
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/favicon.ico') }}" />
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.png') }}" />
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/favicon.png') }}" />
   </head>
   <body>
     <div class="login-page">
@@ -60,5 +60,14 @@
       </div>
     </div>
     <script src="{{ url_for('static', filename='js/login.js') }}"></script>
+      <script>
+      if (window.location.search.includes('reason=timeout')) {
+        var errEl = document.getElementById('loginError');
+        if (errEl) {
+          errEl.textContent = 'You were logged out due to inactivity. Please sign in again.';
+          errEl.style.display = 'block';
+        }
+      }
+    </script>
   </body>
 </html>
