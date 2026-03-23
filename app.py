@@ -52,7 +52,7 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_NAME'] = 'ms_session'
-app.config['PERMANENT_SESSION_LIFETIME'] = 86400 * 7  # 7 days
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)  # 1 hour inactivity timeout
 
 # Use /tmp for uploads on Vercel (only writable directory in serverless)
 VERCEL = os.getenv('VERCEL', False)
@@ -248,7 +248,7 @@ def api_login():
     password = data.get('password', '')
     user = User.query.filter_by(username=username).first()
     if user and user.check_password(password):
-        session.permanent = True
+        session.permanent = False
         session['user_id'] = user.id
         # Save token to DB — safe for serverless (no in-memory state)
         token = secrets.token_hex(32)

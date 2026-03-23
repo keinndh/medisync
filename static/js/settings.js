@@ -63,11 +63,11 @@
                 document.getElementById('settingsProfilePic').innerHTML = '<img src="' + picUrl + '" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
                 var headerPic = document.getElementById('headerProfilePic');
                 if (headerPic) headerPic.innerHTML = '<img src="' + picUrl + '" alt="Profile" style="width:100%;height:100%;object-fit:cover;">';
-                // Update localStorage cache so other pages reflect the new picture
+                // Update sessionStorage cache so other pages reflect the new picture
                 try {
-                    var cached = JSON.parse(localStorage.getItem('ms_user') || '{}');
+                    var cached = JSON.parse(sessionStorage.getItem('ms_user') || '{}');
                     cached.profile_picture = data.profile_picture;
-                    localStorage.setItem('ms_user', JSON.stringify(cached));
+                    sessionStorage.setItem('ms_user', JSON.stringify(cached));
                 } catch(e) {}
             } else { showToast(data.error || 'Upload failed.', 'error'); }
         } catch (e) { showToast('Connection error.', 'error'); }

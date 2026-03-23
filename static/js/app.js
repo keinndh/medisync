@@ -23,7 +23,7 @@ window.fetch = function() {
     // On localhost only: attach token header since there's no proxy
     const isLocalhost = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
     if (isLocalhost) {
-        const token = localStorage.getItem('ms_auth_token');
+        const token = sessionStorage.getItem('ms_auth_token');
         if (token && typeof resource === 'string' && resource.includes('127.0.0.1')) {
             if (!config.headers) config.headers = {};
             if (config.headers instanceof Headers) {
@@ -37,8 +37,8 @@ window.fetch = function() {
     return originalFetch(resource, config).then(function(response) {
         // 401 = session expired or token invalid — redirect to login
         if (response.status === 401 && typeof resource === 'string' && resource.includes('/api/')) {
-            localStorage.removeItem('ms_auth_token');
-            localStorage.removeItem('ms_user');
+            sessionStorage.removeItem('ms_auth_token');
+            sessionStorage.removeItem('ms_user');
             window.location.href = '/login';
         }
         return response;
@@ -72,7 +72,7 @@ updateClock();
 // --- Load User Info ---
 async function loadUserInfo() {
   // Show cached user instantly (avoids blank name on slow connections)
-  const cached = localStorage.getItem('ms_user');
+  const cached = sessionStorage.getItem('ms_user');
   if (cached) {
     try {
       const u = JSON.parse(cached);
@@ -86,7 +86,7 @@ async function loadUserInfo() {
     if (!res.ok) return;
     const user = await res.json();
     // Update cache
-    localStorage.setItem('ms_user', JSON.stringify(user));
+    sessionStorage.setItem('ms_user', JSON.stringify(user));
     const nameEl = document.getElementById("headerUserName");
     if (nameEl) nameEl.textContent = user.full_name || user.username;
     const picEl = document.getElementById("headerProfilePic");
@@ -211,8 +211,8 @@ if (logoutNo)
 if (logoutYes) {
   logoutYes.addEventListener("click", async function () {
     await fetch(window.API_BASE + "/api/logout", { method: "POST" });
-    localStorage.removeItem('ms_auth_token');
-    localStorage.removeItem('ms_user');
+    sessionStorage.removeItem('ms_auth_token');
+    sessionStorage.removeItem('ms_user');
     window.location.href = "/login";
   });
 }
