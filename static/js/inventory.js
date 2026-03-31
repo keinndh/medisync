@@ -233,7 +233,7 @@
     });
     document.getElementById('printBtn').addEventListener('click', function () {
         exportDropdown.classList.remove('show');
-        window.print();
+        window.open(window.API_BASE + '/inventory/print', '_blank');
     });
 
     // --- Add Medicine Modal ---

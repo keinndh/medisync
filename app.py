@@ -240,6 +240,12 @@ def dashboard_page():
 @login_required
 def inventory_page():
     return render_template('inventory.html')
+@app.route('/inventory/print')
+@login_required
+def inventory_print():
+    medicines = Medicine.query.filter(Medicine.status != 'Deleted').order_by(Medicine.date_added.desc()).all()
+    return render_template('inventory_print.html', medicines=medicines, current_date=manila_today().strftime("%B %d, %Y"))
+
 
 
 @app.route('/dispensing')
@@ -681,19 +687,23 @@ def api_export_pdf():
     from reportlab.lib import colors
     from reportlab.lib.units import inch
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
 
     medicines = Medicine.query.filter(Medicine.status != 'Deleted').order_by(Medicine.date_added.desc()).all()
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=0.5*inch, leftMargin=0.5*inch, topMargin=0.5*inch, bottomMargin=0.5*inch)
     styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle('StockTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=14, alignment=TA_CENTER, spaceAfter=6)
+    subtitle_style = ParagraphStyle('StockSubtitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=12, alignment=TA_CENTER, spaceAfter=24)
+    
     elements = []
 
-    elements.append(Paragraph('MediSync - Medicine Inventory Report', styles['Title']))
-    elements.append(Paragraph(f'Generated: {manila_now().strftime("%Y-%m-%d %H:%M")}', styles['Normal']))
-    elements.append(Spacer(1, 0.3 * inch))
+    elements.append(Paragraph('MEDICAL SUPPLIES STOCK ASSESSMENT REPORT', title_style))
+    elements.append(Paragraph(f'AS OF: {manila_today().strftime("%B %d, %Y")}', subtitle_style))
 
-    headers = ['Stock #', 'Article', 'Dosage', 'Unit', 'Qty', 'Category', 'Exp. Date', 'Days', 'Status']
+    headers = ['Stock Number', 'Article', 'Dosage', 'Unit', 'Qty.', 'Category', 'Expiration Date', 'Days Left', 'Status']
     data = [headers]
     for m in medicines:
         data.append([
@@ -704,19 +714,44 @@ def api_export_pdf():
             m.status
         ])
 
-    table = Table(data, repeatRows=1)
+    # Calculate column widths to fit landscape A4
+    col_widths = [1*inch, 1.8*inch, 1.2*inch, 0.8*inch, 0.6*inch, 1.2*inch, 1*inch, 0.7*inch, 0.9*inch]
+
+    table = Table(data, repeatRows=1, colWidths=col_widths)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#5CB9A4')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.white),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 9),
         ('FONTSIZE', (0, 1), (-1, -1), 8),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     elements.append(table)
+    elements.append(Spacer(1, 0.6 * inch))
+
+    # Add signature section
+    sig_data = [
+        ['Approved By:', '', 'Certified Correct By:'],
+        ['\n\n\n', '', '\n\n\n'],
+        ['Signature Over Printed Name of Head of Agency/Entity\nof Authorized Representative', '', 'Signature Over Printed Name of Inventor Committee\nChair and Members']
+    ]
+    
+    sig_table = Table(sig_data, colWidths=[3.5*inch, 2*inch, 3.5*inch])
+    sig_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (2, 0), (2, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+        ('LINEBELOW', (0, 1), (0, 1), 1, colors.black),
+        ('LINEBELOW', (2, 1), (2, 1), 1, colors.black),
+    ]))
+    
+    elements.append(sig_table)
+
     doc.build(elements)
     buffer.seek(0)
     return send_file(
