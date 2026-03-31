@@ -223,6 +223,9 @@
     <!-- Toast container -->
     <div class="toast-container" id="toastContainer"></div>
 
+    <!-- Vercel Speed Insights -->
+    <script type="module" src="{{ url_for('static', filename='js/speed-insights.js') }}"></script>
+
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     {% block scripts %}{% endblock %}
   </body>
