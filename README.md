@@ -11,11 +11,13 @@ Managing medicine in a barangay health center requires precision. **MediSync** r
 ---
 
 ## Key Features
-* **Medicine Inventory:** Real-time tracking of stock levels (In/Out).
-* **Categorization:** Automated and manual sorting of medicines (e.g., *Antibiotics, Vitamins, Maintenance*).
-* **PDF Integration:** Tools to extract and migrate medicine lists from official PDF documents directly into the database.
-* **User-Friendly Dashboard:** A clean, responsive interface for healthcare staff to view current stock status.
-* **Data Integrity:** Built-in migration scripts to ensure the database schema stays up-to-date.
+* **Medicine Inventory:** Real-time tracking of stock levels (In/Out) with barcode/stock number support.
+* **Smart Categorization:** Organize items by Generic Name and an optional metadata "Category" (e.g., Pain Relief, Vitamins, Heart) for advanced filtering.
+* **Team Accounts:** Admin can create up to **5 sub-accounts** for coworkers, each with full system access while maintaining individual activity logs.
+* **Activity Monitoring:** Real-time logging of all actions (Add, Edit, Restock, Dispense) with a powerful filtering system per user/action.
+* **Account Customization:** Profile management page with base64-encoded profile picture storage for cross-platform compatibility.
+* **Automation:** Low stock and near-expiry detection with dashboard indicators and automated notifications.
+* **Data Migration:** Built-in tools for PDF medicine list extraction and database schema updates.
 
 ---
 
@@ -23,21 +25,22 @@ Managing medicine in a barangay health center requires precision. **MediSync** r
 | Component | Technology |
 | :--- | :--- |
 | **Backend** | Python (Flask) |
-| **Frontend** | HTML5, CSS3, JavaScript |
-| **Database** | SQLite (SQLAlchemy ORM) |
-| **Tools** | PDF Extraction scripts, Flask-Migrate |
+| **Frontend** | HTML5, CSS3, JavaScript (Vanilla) |
+| **Database** | SQLite (Local) / PostgreSQL (Production) |
+| **Storage** | Base64-encoded persistent storage for profile images |
+| **Tools** | ReportLab (PDF), SQLAlchemy ORM |
 
 ---
 
 ## Project Structure
 ```plaintext
-├── app.py                # Main application entry point
-├── models.py             # Database schema and models
-├── migrate_db.py         # Script for handling database migrations
-├── extract_categories.py  # Utility for processing medicine lists
-├── templates/            # HTML layouts and pages
-├── static/               # CSS and JavaScript assets
-└── dataset/              # Initial data and resource files
+├── app.py                # Main application entry point & API routes
+├── models.py             # Database models (User, Medicine, ActivityLog, etc.)
+├── templates/            # HTML pages (Dashboard, Inventory, Account, etc.)
+├── static/               # Assets (CSS, JS, Images)
+├── migrate_db.py         # DB migration & schema management script
+├── extract_categories.py  # PDF data processing utility
+└── vercel.json           # Configuration for cloud deployment
 ```
 
 ---
@@ -53,7 +56,7 @@ Managing medicine in a barangay health center requires precision. **MediSync** r
 2. **Create a Virtual Environment:**
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   source venv/bin/activate  # Windows: venv\Scripts\activate
    ```
 
 3. **Install Dependencies:**
@@ -61,32 +64,29 @@ Managing medicine in a barangay health center requires precision. **MediSync** r
    pip install -r requirements.txt
    ```
 
-4. **Initialize the Database:**
+4. **Initialize & Run the Database:**
    ```bash
-   python migrate_db.py
+   python app.py  # Automatically initializes and migrates schema
    ```
 
-5. **Run the Application:**
-   ```bash
-   flask run
-   ```
-   > The app will be available at **[http://127.0.0.1:5000](http://127.0.0.1:5000)**.
+5. **Access the App:**
+   > The app defaults to **[http://127.0.0.1:10000](http://127.0.0.1:10000)**.
 
 ---
 
-## Future Roadmap
-* **Low Stock Alerts:** Automated notifications when medicine levels fall below a certain threshold.
-* **Expiration Tracking:** Visual warnings for medicines nearing their expiry date.
-* **Reporting:** Generate monthly consumption reports for district-level submission.
+## Future Roadmap (Next Steps)
+* [x] **Sub-Account Management:** Allow admins to manage coworker access.
+* [x] **Activity Monitoring:** Comprehensive logs for all system changes.
+* [ ] **Advanced Reporting:** Detailed PDF/Excel exports for monthly district-level reports.
+* [ ] **Auto-Backup:** Periodic database backups for data recovery.
+* [ ] **Mobile App:** Potential mobile-first companion for easy dispensing on-field.
 
 ---
 
 ## Contributing
-This project is currently being developed for a specific health center. However, feedback and suggestions are welcome. Feel free to **open an issue** or **submit a pull request**.
+This project is dedicated to improving healthcare efficiency at the **Vitali District Health Center**. Feedback and pull requests are welcome.
 
 ---
 
 ## License
-This project is licensed under the **MIT License** - see the `LICENSE` file for details.
-
----
+MIT License - &copy; 2026 MediSync.
