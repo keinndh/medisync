@@ -686,9 +686,10 @@ def api_export_pdf():
     from reportlab.lib.pagesizes import landscape, A4
     from reportlab.lib import colors
     from reportlab.lib.units import inch
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER
+    import os
 
     medicines = Medicine.query.filter(Medicine.status != 'Deleted').order_by(Medicine.date_added.desc()).all()
     buffer = io.BytesIO()
@@ -699,6 +700,11 @@ def api_export_pdf():
     subtitle_style = ParagraphStyle('StockSubtitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=12, alignment=TA_CENTER, spaceAfter=24)
     
     elements = []
+
+    img_path = os.path.join(app.static_folder, 'images', 'print_header.png')
+    if os.path.exists(img_path):
+        elements.append(Image(img_path, width=10*inch, height=0.975*inch))
+        elements.append(Spacer(1, 0.1*inch))
 
     elements.append(Paragraph('MEDICAL SUPPLIES STOCK ASSESSMENT REPORT', title_style))
     elements.append(Paragraph(f'AS OF: {manila_today().strftime("%B %d, %Y")}', subtitle_style))
@@ -1008,8 +1014,6 @@ def api_queue_unprioritize(q_id):
     db.session.commit()
     log_activity('Edit', f'Removed priority for queue item #{q_id} for {item.recipient_name}')
     return jsonify(item.to_dict())
-
-
 
 
 @app.route('/api/queue/<int:q_id>', methods=['DELETE'])
