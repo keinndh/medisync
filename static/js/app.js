@@ -105,6 +105,13 @@ async function loadUserInfo() {
       const u = JSON.parse(cached);
       const nameEl = document.getElementById("headerUserName");
       if (nameEl) nameEl.textContent = u.full_name || u.username || 'Admin';
+      // Also show cached profile picture immediately
+      const picEl = document.getElementById("headerProfilePic");
+      if (picEl && u.profile_picture) {
+        let picUrl = u.profile_picture;
+        if (picUrl.startsWith('/')) picUrl = window.API_BASE + picUrl;
+        picEl.innerHTML = '<img src="' + picUrl + '" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display=\'none\'">';
+      }
     } catch(e) {}
   }
 
@@ -121,7 +128,7 @@ async function loadUserInfo() {
       // Supports both base64 data URLs and legacy /static/uploads/ paths
       let picUrl = user.profile_picture;
       if (picUrl.startsWith('/')) picUrl = window.API_BASE + picUrl;
-      picEl.innerHTML = '<img src="' + picUrl + '" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+      picEl.innerHTML = '<img src="' + picUrl + '" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display=\'none\'">';
     }
   } catch (e) {
     /* ignore */

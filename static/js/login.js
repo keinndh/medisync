@@ -56,6 +56,9 @@ window.fetch = function() {
             });
             var data = await res.json();
             if (data.success) {
+                // Store auth token and user data for cross-page persistence
+                if (data.token) localStorage.setItem('ms_auth_token', data.token);
+                if (data.user) localStorage.setItem('ms_user', JSON.stringify(data.user));
                 window.location.href = '/dashboard';
             } else {
                 errEl.textContent = data.error || 'Invalid credentials.';

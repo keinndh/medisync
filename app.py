@@ -68,8 +68,32 @@ def init_db():
     """Initialize DB tables — called on startup."""
     try:
         db.create_all()
+        # Migrate existing tables: add new columns if missing
+        from sqlalchemy import inspect, text
+        insp = inspect(db.engine)
+        # Medicine: category_type
+        med_cols = [c['name'] for c in insp.get_columns('medicines')]
+        if 'category_type' not in med_cols:
+            db.session.execute(text("ALTER TABLE medicines ADD COLUMN category_type VARCHAR(200) DEFAULT ''"))
+            db.session.commit()
+            print('Migrated: added category_type to medicines')
+        # User: role, parent_id
+        user_cols = [c['name'] for c in insp.get_columns('users')]
+        if 'role' not in user_cols:
+            db.session.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'admin'"))
+            db.session.commit()
+            print('Migrated: added role to users')
+        if 'parent_id' not in user_cols:
+            db.session.execute(text("ALTER TABLE users ADD COLUMN parent_id INTEGER REFERENCES users(id)"))
+            db.session.commit()
+            print('Migrated: added parent_id to users')
+        # User: profile_picture (in case old DB lacks it)
+        if 'profile_picture' not in user_cols:
+            db.session.execute(text("ALTER TABLE users ADD COLUMN profile_picture TEXT DEFAULT ''"))
+            db.session.commit()
+            print('Migrated: added profile_picture to users')
         if not User.query.filter_by(username='admin').first():
-            u = User(username='admin', full_name='System Admin')
+            u = User(username='admin', full_name='System Admin', role='admin')
             u.set_password('admin123')
             db.session.add(u)
             db.session.commit()
@@ -127,6 +151,8 @@ def log_activity(action, details=''):
     uid = getattr(request, 'current_user_id', None) or session.get('user_id')
     user = User.query.get(uid)
     performed_by = user.full_name if user else 'System'
+    if user and user.role == 'sub' and user.parent:
+        performed_by = f"{user.full_name} (sub of {user.parent.full_name})"
     entry = ActivityLog(action=action, performed_by=performed_by, details=details)
     db.session.add(entry)
     db.session.commit()
@@ -234,10 +260,16 @@ def logs_page():
     return render_template('logs.html')
 
 
+@app.route('/account')
+@login_required
+def account_page():
+    return render_template('account.html')
+
+# Keep old route for backward compatibility
 @app.route('/settings')
 @login_required
 def settings_page():
-    return render_template('settings.html')
+    return redirect(url_for('account_page'))
 
 
 # auth api
@@ -352,6 +384,7 @@ def api_medicines():
                 Medicine.unit_of_measurement.ilike(f'%{search}%'),
                 Medicine.status.ilike(f'%{search}%'),
                 Medicine.category.ilike(f'%{search}%'),
+                Medicine.category_type.ilike(f'%{search}%'),
                 Medicine.description_dosage.ilike(f'%{search}%'),
                 Medicine.remarks.ilike(f'%{search}%')
             )
@@ -364,6 +397,9 @@ def api_medicines():
     category_filter = request.args.get('category', '')
     if category_filter:
         query = query.filter_by(category=category_filter)
+    category_type_filter = request.args.get('category_type', '')
+    if category_type_filter:
+        query = query.filter(Medicine.category_type.ilike(f'%{category_type_filter}%'))
     date_filter = request.args.get('date_added', '')
     if date_filter:
         try:
@@ -429,6 +465,7 @@ def api_add_medicine():
         unit_of_measurement=data.get('unit_of_measurement', ''),
         quantity=int(data.get('quantity', 0)),
         category=data.get('category', ''),
+        category_type=data.get('category_type', ''),
         remarks=data.get('remarks', ''),
         expiration_date=exp_date,
         is_new_batch=True,
@@ -453,6 +490,7 @@ def api_edit_medicine(med_id):
     med.unit_of_measurement = data.get('unit_of_measurement', med.unit_of_measurement)
     med.quantity = int(data.get('quantity', med.quantity))
     med.category = data.get('category', med.category)
+    med.category_type = data.get('category_type', med.category_type)
     med.remarks = data.get('remarks', med.remarks)
 
     if data.get('expiration_date'):
@@ -518,6 +556,7 @@ def api_restock_medicine(med_id):
         unit_of_measurement=old_med.unit_of_measurement,
         quantity=qty,
         category=old_med.category,
+        category_type=old_med.category_type,
         remarks=old_med.remarks,
         expiration_date=exp_date,
         is_new_batch=False,
@@ -577,6 +616,16 @@ def api_categories():
     # Merge and deduplicate
     all_cats = sorted(list(set(med_cat_list + system_cat_list)))
     return jsonify(all_cats)
+
+
+@app.route('/api/medicines/category-types')
+@login_required
+def api_category_types():
+    """Get distinct category_type values for filtering."""
+    cats = db.session.query(Medicine.category_type).distinct().filter(
+        Medicine.category_type != '', Medicine.category_type.isnot(None)
+    ).all()
+    return jsonify(sorted([c[0] for c in cats]))
 
 
 @app.route('/api/medicines/categories', methods=['POST'])
@@ -1377,7 +1426,7 @@ def api_mark_all_read():
     return jsonify({'success': True})
 
 
-# settings api
+# account/settings api
 @app.route('/api/settings/profile', methods=['PUT'])
 @login_required
 def api_update_profile():
@@ -1423,11 +1472,105 @@ def api_upload_picture():
     return jsonify(user.to_dict())
 
 
+# --- Sub-Accounts API ---
+@app.route('/api/accounts/sub', methods=['GET'])
+@login_required
+def api_list_sub_accounts():
+    """List sub-accounts created by the current admin."""
+    uid = getattr(request, 'current_user_id', session.get('user_id'))
+    current_user = User.query.get(uid)
+    # Admins see their own subs; sub-accounts see their parent's subs
+    parent_id = uid if (current_user.role == 'admin' or not current_user.parent_id) else current_user.parent_id
+    subs = User.query.filter_by(parent_id=parent_id).order_by(User.created_at.desc()).all()
+    return jsonify([s.to_dict() for s in subs])
+
+
+@app.route('/api/accounts/sub', methods=['POST'])
+@login_required
+def api_create_sub_account():
+    """Create a sub-account (max 5 per admin)."""
+    uid = getattr(request, 'current_user_id', session.get('user_id'))
+    current_user = User.query.get(uid)
+    # Only admins (non-sub) can create sub-accounts
+    if current_user.role == 'sub':
+        return jsonify({'error': 'Sub-accounts cannot create other accounts.'}), 403
+    # Check limit
+    existing_subs = User.query.filter_by(parent_id=uid).count()
+    if existing_subs >= 5:
+        return jsonify({'error': 'Maximum of 5 sub-accounts reached.'}), 400
+    data = request.get_json()
+    username = data.get('username', '').strip()
+    password = data.get('password', '').strip()
+    full_name = data.get('full_name', '').strip()
+    if not username or not password or not full_name:
+        return jsonify({'error': 'Username, password, and full name are required.'}), 400
+    if len(password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters.'}), 400
+    if User.query.filter_by(username=username).first():
+        return jsonify({'error': 'Username already taken.'}), 400
+    sub = User(username=username, full_name=full_name, role='sub', parent_id=uid)
+    sub.set_password(password)
+    db.session.add(sub)
+    db.session.commit()
+    log_activity('Add', f'Created sub-account: {full_name} ({username})')
+    return jsonify(sub.to_dict()), 201
+
+
+@app.route('/api/accounts/sub/<int:sub_id>', methods=['DELETE'])
+@login_required
+def api_delete_sub_account(sub_id):
+    """Delete a sub-account."""
+    uid = getattr(request, 'current_user_id', session.get('user_id'))
+    sub = User.query.get_or_404(sub_id)
+    if sub.parent_id != uid:
+        return jsonify({'error': 'Not authorized to delete this account.'}), 403
+    username = sub.username
+    # Delete auth tokens for this sub
+    AuthToken.query.filter_by(user_id=sub_id).delete()
+    db.session.delete(sub)
+    db.session.commit()
+    log_activity('Delete', f'Deleted sub-account: {username}')
+    return jsonify({'success': True})
+
+
+@app.route('/api/accounts/sub/<int:sub_id>/activity')
+@login_required
+def api_sub_account_activity(sub_id):
+    """Get activity logs for a specific sub-account."""
+    uid = getattr(request, 'current_user_id', session.get('user_id'))
+    sub = User.query.get_or_404(sub_id)
+    if sub.parent_id != uid:
+        return jsonify({'error': 'Not authorized.'}), 403
+    # Search logs by the sub's full name
+    logs = ActivityLog.query.filter(
+        ActivityLog.performed_by.ilike(f'%{sub.full_name}%')
+    ).order_by(ActivityLog.timestamp.desc()).limit(100).all()
+    return jsonify([l.to_dict() for l in logs])
+
+
+@app.route('/api/accounts/sub/<int:sub_id>/reset-password', methods=['PUT'])
+@login_required
+def api_reset_sub_password(sub_id):
+    """Reset a sub-account's password."""
+    uid = getattr(request, 'current_user_id', session.get('user_id'))
+    sub = User.query.get_or_404(sub_id)
+    if sub.parent_id != uid:
+        return jsonify({'error': 'Not authorized.'}), 403
+    data = request.get_json()
+    new_pw = data.get('password', '').strip()
+    if not new_pw or len(new_pw) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters.'}), 400
+    sub.set_password(new_pw)
+    db.session.commit()
+    log_activity('Edit', f'Reset password for sub-account: {sub.username}')
+    return jsonify({'success': True})
+
+
 # database initialization
 def create_tables():
     db.create_all()
     if not User.query.first():
-        admin = User(username='admin', full_name='System Administrator')
+        admin = User(username='admin', full_name='System Administrator', role='admin')
         admin.set_password('admin123')
         db.session.add(admin)
         db.session.commit()

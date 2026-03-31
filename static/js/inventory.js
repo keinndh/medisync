@@ -2,6 +2,7 @@
 (function () {
     var allMedicines = [];
     var systemCategories = [];
+    var systemCategoryTypes = [];
 
     // --- Load Stats ---
     async function loadInvStats() {
@@ -30,6 +31,17 @@
             // Setup form autocomplete
             setupCategoryAutocomplete('medCategory', 'medCategoryDropdown', systemCategories);
             
+        } catch (e) { /* ignore */ }
+    }
+
+    // --- Load Category Types (for filtering) ---
+    async function loadCategoryTypes() {
+        try {
+            var res = await fetch(window.API_BASE + '/api/medicines/category-types');
+            systemCategoryTypes = await res.json();
+            setupCategoryAutocomplete('invCategoryTypeInput', 'invCategoryTypeDropdown', systemCategoryTypes, function() {
+                loadMedicines();
+            });
         } catch (e) { /* ignore */ }
     }
 
@@ -120,6 +132,9 @@
         } else if (type === 'category') {
             var c = document.getElementById('invCategoryInput').value.trim();
             if (c) params.set('category', c);
+        } else if (type === 'category_type') {
+            var ct = document.getElementById('invCategoryTypeInput').value.trim();
+            if (ct) params.set('category_type', ct);
         } else if (type === 'date_added') {
             var d = document.getElementById('invDateFilter').value;
             if (d) params.set('date_added', d);
@@ -173,15 +188,17 @@
     const invSearchWrapper = document.getElementById('invSearchWrapper');
     const invStatusWrapper = document.getElementById('invStatusWrapper');
     const invCategoryWrapper = document.getElementById('invCategoryWrapper');
+    const invCategoryTypeWrapper = document.getElementById('invCategoryTypeWrapper');
     const invDateWrapper = document.getElementById('invDateWrapper');
     const invSortWrapper = document.getElementById('invSortWrapper');
 
     invFilterType.addEventListener('change', function() {
         const val = this.value;
-        [invSearchWrapper, invStatusWrapper, invCategoryWrapper, invDateWrapper, invSortWrapper].forEach(w => w.style.display = 'none');
+        [invSearchWrapper, invStatusWrapper, invCategoryWrapper, invCategoryTypeWrapper, invDateWrapper, invSortWrapper].forEach(w => w.style.display = 'none');
         
         if (val === 'status') invStatusWrapper.style.display = 'block';
         else if (val === 'category') invCategoryWrapper.style.display = 'block';
+        else if (val === 'category_type') invCategoryTypeWrapper.style.display = 'block';
         else if (val === 'date_added' || val === 'restocked_date') invDateWrapper.style.display = 'block';
         else if (val === 'sort') invSortWrapper.style.display = 'block';
         
@@ -247,6 +264,7 @@
             description_dosage: document.getElementById('medDosage').value.trim(),
             unit_of_measurement: document.getElementById('medUnit').value,
             category: document.getElementById('medCategory').value.trim(),
+            category_type: document.getElementById('medCategoryType').value.trim(),
             expiration_date: document.getElementById('medExpDate').value,
             remarks: document.getElementById('medRemarks').value.trim()
         };
@@ -333,6 +351,7 @@
         document.getElementById('medQty').value = med.quantity;
         document.getElementById('medQty').disabled = true;
         document.getElementById('medCategory').value = med.category || '';
+        document.getElementById('medCategoryType').value = med.category_type || '';
         document.getElementById('medExpDate').value = med.expiration_date || '';
         document.getElementById('medRemarks').value = med.remarks || '';
         document.getElementById('medModalTitle').textContent = 'Edit Medicine';
@@ -509,4 +528,5 @@
     loadMedicines();
     loadInvStats();
     loadCategories();
+    loadCategoryTypes();
 })();

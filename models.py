@@ -19,7 +19,12 @@ class User(db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     full_name = db.Column(db.String(120), nullable=False, default='Admin')
     profile_picture = db.Column(db.Text, default='')
+    role = db.Column(db.String(20), default='admin')  # admin or sub
+    parent_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: manila_now())
+
+    # Relationships
+    parent = db.relationship('User', remote_side=[id], backref=db.backref('sub_accounts', lazy=True))
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -33,6 +38,8 @@ class User(db.Model):
             'username': self.username,
             'full_name': self.full_name,
             'profile_picture': self.profile_picture,
+            'role': self.role or 'admin',
+            'parent_id': self.parent_id,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -46,6 +53,7 @@ class Medicine(db.Model):
     unit_of_measurement = db.Column(db.String(50), nullable=False)
     quantity = db.Column(db.Integer, nullable=False, default=0)
     category = db.Column(db.String(500), default='')
+    category_type = db.Column(db.String(200), default='')  # Optional category (hidden from table, used for filtering)
     remarks = db.Column(db.Text, default='')
     expiration_date = db.Column(db.Date, nullable=True)
     date_added = db.Column(db.DateTime, default=lambda: manila_now())
@@ -72,6 +80,7 @@ class Medicine(db.Model):
             'unit_of_measurement': self.unit_of_measurement,
             'quantity': self.quantity,
             'category': self.category,
+            'category_type': self.category_type or '',
             'remarks': self.remarks,
             'expiration_date': self.expiration_date.isoformat() if self.expiration_date else None,
             'date_added': self.date_added.isoformat() if self.date_added else None,

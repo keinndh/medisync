@@ -53,6 +53,7 @@
             <option value="">-- Filter By --</option>
             <option value="status">Status</option>
             <option value="category">Generic Name</option>
+            <option value="category_type">Category</option>
             <option value="date_added">Date Added</option>
             <option value="restocked_date">Restocked Date</option>
             <option value="sort">Sort Order</option>
@@ -78,6 +79,11 @@
             <option value="Expired">Expired</option>
             <option value="Discarded">Discarded</option>
         </select>
+    </div>
+
+    <div id="invCategoryTypeWrapper" style="display:none;flex:1;" class="autocomplete-wrapper">
+        <input type="text" id="invCategoryTypeInput" class="form-control" placeholder="Type category..." autocomplete="off">
+        <div class="autocomplete-dropdown" id="invCategoryTypeDropdown"></div>
     </div>
 
     <div id="invDateWrapper" style="display: none; flex: 0.8;">
@@ -214,6 +220,10 @@
                 <div class="form-group">
                     <label for="medRemarks">Remarks</label>
                     <textarea id="medRemarks" class="form-control" rows="2" placeholder="Optional remarks..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="medCategoryType">Category <span style="font-weight:400;color:var(--text-muted);">(optional)</span></label>
+                    <input type="text" id="medCategoryType" class="form-control" placeholder="e.g. Pain Relief, Heart, First Aid" autocomplete="off">
                 </div>
             </form>
         </div>
