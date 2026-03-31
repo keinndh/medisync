@@ -79,7 +79,7 @@ Managing medicine in a barangay health center requires precision. **MediSync** r
    ```
 
 5. **Access the App:**
-   > The app defaults to **[http://127.0.0.1:10000](http://127.0.0.1:10000)**.
+   > The app defaults to **[http://medisyncinventory.vercel.app]([http://medisyncinventory.vercel.app)**.
 
 ---
 
