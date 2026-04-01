@@ -683,17 +683,20 @@ def api_export_csv():
 @app.route('/api/inventory/export/pdf')
 @login_required
 def api_export_pdf():
-    from reportlab.lib.pagesizes import landscape, A4
+    from reportlab.lib.pagesizes import landscape
     from reportlab.lib import colors
     from reportlab.lib.units import inch
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER
     import os
+    import pypdf
+
+    LONG_LANDSCAPE = (14*inch, 8.5*inch)
 
     medicines = Medicine.query.filter(Medicine.status != 'Deleted').order_by(Medicine.date_added.desc()).all()
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=0.5*inch, leftMargin=0.5*inch, topMargin=0.5*inch, bottomMargin=0.5*inch)
+    doc = SimpleDocTemplate(buffer, pagesize=LONG_LANDSCAPE, rightMargin=0.5*inch, leftMargin=0.5*inch, topMargin=1.5*inch, bottomMargin=0.5*inch)
     styles = getSampleStyleSheet()
     
     title_style = ParagraphStyle('StockTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=14, alignment=TA_CENTER, spaceAfter=6)
@@ -701,13 +704,8 @@ def api_export_pdf():
     
     elements = []
 
-    img_path = os.path.join(app.static_folder, 'images', 'print_header.png')
-    if os.path.exists(img_path):
-        elements.append(Image(img_path, width=10*inch, height=0.975*inch))
-        elements.append(Spacer(1, 0.1*inch))
-
-    elements.append(Paragraph('MEDICAL SUPPLIES STOCK ASSESSMENT REPORT', title_style))
-    elements.append(Paragraph(f'AS OF: {manila_today().strftime("%B %d, %Y")}', subtitle_style))
+    # Removed the logo Image and MEDICAL SUPPLIES STOCK ASSESSMENT REPORT headers 
+    # as they are already part of the background template
 
     headers = ['Stock Number', 'Article', 'Dosage', 'Unit', 'Qty.', 'Category', 'Expiration Date', 'Days Left', 'Status']
     data = [headers]
@@ -720,8 +718,9 @@ def api_export_pdf():
             m.status
         ])
 
-    # Calculate column widths to fit landscape A4
-    col_widths = [1*inch, 1.8*inch, 1.2*inch, 0.8*inch, 0.6*inch, 1.2*inch, 1*inch, 0.7*inch, 0.9*inch]
+    # Calculate column widths to fit landscape LONG (14 inches wide - 1 inch margins = 13 inches)
+    # Scaled proportionally from previous A4 widths
+    col_widths = [1.5*inch, 2.5*inch, 1.8*inch, 1.0*inch, 0.8*inch, 1.8*inch, 1.5*inch, 1.0*inch, 1.1*inch]
 
     table = Table(data, repeatRows=1, colWidths=col_widths)
     table.setStyle(TableStyle([
@@ -760,8 +759,28 @@ def api_export_pdf():
 
     doc.build(elements)
     buffer.seek(0)
+
+    # Merge with template using pypdf
+    template_path = os.path.join(app.static_folder, 'paper', 'inventory_page_template.pdf')
+    if os.path.exists(template_path):
+        merged_buffer = io.BytesIO()
+        output_pdf = pypdf.PdfWriter()
+        generated_pdf = pypdf.PdfReader(buffer)
+        
+        for fg_page in generated_pdf.pages:
+            template_pdf = pypdf.PdfReader(template_path)
+            bg_page = template_pdf.pages[0]
+            bg_page.merge_page(fg_page)
+            output_pdf.add_page(bg_page)
+            
+        output_pdf.write(merged_buffer)
+        merged_buffer.seek(0)
+        final_buffer = merged_buffer
+    else:
+        final_buffer = buffer
+
     return send_file(
-        buffer, mimetype='application/pdf', as_attachment=True,
+        final_buffer, mimetype='application/pdf', as_attachment=True,
         download_name=f'medisync_inventory_{manila_today().isoformat()}.pdf'
     )
 
@@ -1357,34 +1376,39 @@ def api_logs_export_csv():
 @app.route('/api/logs/export/pdf')
 @login_required
 def api_logs_export_pdf():
-    from reportlab.lib.pagesizes import landscape, A4
+    from reportlab.lib.pagesizes import portrait
     from reportlab.lib import colors
     from reportlab.lib.units import inch
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
+    import pypdf
+    import os
 
+    LONG_PORTRAIT = (8.5*inch, 14*inch)
+
+    # "1 to nth number of logs" -> newest logs, but print in reverse (ascending order 1, 2, 3...)
     logs = ActivityLog.query.order_by(ActivityLog.timestamp.desc()).limit(1000).all()
+    logs.reverse() # now they are chronologically ascending from oldest to newest
+
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
+    doc = SimpleDocTemplate(buffer, pagesize=LONG_PORTRAIT, topMargin=1.5*inch, bottomMargin=0.5*inch, leftMargin=0.5*inch, rightMargin=0.5*inch)
     styles = getSampleStyleSheet()
     elements = []
 
-    elements.append(Paragraph('MediSync - Activity Logs Report', styles['Title']))
-    elements.append(Paragraph(f'Generated: {manila_now().strftime("%Y-%m-%d %H:%M")}', styles['Normal']))
-    elements.append(Spacer(1, 0.3 * inch))
-
-    headers = ['ID', 'Timestamp', 'Action', 'Performed By', 'Details']
+    # Don't add header margin for title - background template handles it
+    
+    headers = ['No.', 'Timestamp', 'Action', 'Performed By', 'Details']
     data = [headers]
-    for l in logs:
+    for i, l in enumerate(logs):
         data.append([
-            str(l.id),
+            str(i + 1),
             l.timestamp.strftime('%Y-%m-%d %H:%M') if l.timestamp else '',
             l.action,
             l.performed_by,
             l.details
         ])
 
-    table = Table(data, colWidths=[0.5*inch, 1.5*inch, 1*inch, 1.5*inch, 5.5*inch], repeatRows=1)
+    table = Table(data, colWidths=[0.5*inch, 1.2*inch, 1*inch, 1.3*inch, 3.3*inch], repeatRows=1)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#5CB9A4')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -1395,12 +1419,33 @@ def api_logs_export_pdf():
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('WORDWRAP', (0, 0), (-1, -1), 'LTR'),
     ]))
     elements.append(table)
     doc.build(elements)
     buffer.seek(0)
+    
+    # Merge with template using pypdf
+    template_path = os.path.join(app.static_folder, 'paper', 'logs_page_template.pdf')
+    if os.path.exists(template_path):
+        merged_buffer = io.BytesIO()
+        output_pdf = pypdf.PdfWriter()
+        generated_pdf = pypdf.PdfReader(buffer)
+        
+        for fg_page in generated_pdf.pages:
+            template_pdf = pypdf.PdfReader(template_path)
+            bg_page = template_pdf.pages[0]
+            bg_page.merge_page(fg_page)
+            output_pdf.add_page(bg_page)
+            
+        output_pdf.write(merged_buffer)
+        merged_buffer.seek(0)
+        final_buffer = merged_buffer
+    else:
+        final_buffer = buffer
+
     return send_file(
-        buffer, mimetype='application/pdf', as_attachment=True,
+        final_buffer, mimetype='application/pdf', as_attachment=True,
         download_name=f'medisync_logs_{manila_today().isoformat()}.pdf'
     )
 
