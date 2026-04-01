@@ -231,10 +231,7 @@
         window.location.href = '/api/inventory/export/pdf';
         exportDropdown.classList.remove('show');
     });
-    document.getElementById('printBtn').addEventListener('click', function () {
-        exportDropdown.classList.remove('show');
-        window.open(window.API_BASE + '/inventory/print', '_blank');
-    });
+
 
     // --- Add Medicine Modal ---
     document.getElementById('addMedBtn').addEventListener('click', function () {
