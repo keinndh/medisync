@@ -688,7 +688,7 @@ def api_export_pdf():
     from reportlab.lib.units import inch
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
     import os
 
     medicines = Medicine.query.filter(Medicine.status != 'Deleted').order_by(Medicine.date_added.desc()).all()
@@ -700,8 +700,10 @@ def api_export_pdf():
         key = (m.article_name, m.description_dosage or '', m.unit_of_measurement, m.status)
         if key not in aggregated:
             base_stock = m.stock_number
-            if '-' in base_stock and base_stock.split('-')[-1].isdigit():
-                base_stock = base_stock.split('-')[0]
+            # Improved stripping logic: only strip if there are at least 3 parts (STK-001-01)
+            parts = base_stock.split('-')
+            if len(parts) >= 3 and parts[-1].isdigit():
+                base_stock = '-'.join(parts[:-1])
                 
             aggregated[key] = {
                 'stock_number': base_stock,
@@ -736,6 +738,18 @@ def api_export_pdf():
     title_style = ParagraphStyle('StockTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=14, alignment=TA_CENTER, spaceAfter=6)
     subtitle_style = ParagraphStyle('StockSubtitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=12, alignment=TA_CENTER, spaceAfter=24)
     
+    # Cell Styles for wrapping
+    cell_style = ParagraphStyle(
+        'Cell', parent=styles['Normal'],
+        fontName='Helvetica', fontSize=8,
+        alignment=TA_CENTER, leading=10
+    )
+    header_cell_style = ParagraphStyle(
+        'HeaderCell', parent=styles['Normal'],
+        fontName='Helvetica-Bold', fontSize=9,
+        textColor=colors.white, alignment=TA_CENTER, leading=11
+    )
+    
     elements = []
 
     img_path = os.path.join(app.static_folder, 'images', 'print_header.png')
@@ -746,30 +760,36 @@ def api_export_pdf():
     elements.append(Paragraph('MEDICAL SUPPLIES STOCK ASSESSMENT REPORT', title_style))
     elements.append(Paragraph(f'AS OF: {manila_today().strftime("%B %d, %Y")}', subtitle_style))
 
-    headers = ['Stock Number', 'Article', 'Dosage', 'Unit', 'Qty.', 'Category', 'Expiration Date', 'Days Left', 'Status']
-    data = [headers]
+    headers = ['Stock\nNumber', 'Article', 'Dosage', 'Unit', 'Qty.', 'Category', 'Expiration\nDate', 'Days\nLeft', 'Status']
+    data = [[Paragraph(h, header_cell_style) for h in headers]]
+    
     for m in aggregated_list:
         data.append([
-            m['stock_number'], m['article_name'], m['description_dosage'], m['unit_of_measurement'],
-            str(m['quantity']), m['category'],
-            m['expiration_date'].strftime('%Y-%m-%d') if m['expiration_date'] else '',
-            f"{m['days_remaining']} days" if m['days_remaining'] is not None else '-',
-            m['status']
+            Paragraph(m['stock_number'], cell_style),
+            Paragraph(m['article_name'], cell_style),
+            Paragraph(m['description_dosage'], cell_style),
+            Paragraph(m['unit_of_measurement'], cell_style),
+            Paragraph(str(m['quantity']), cell_style),
+            Paragraph(m['category'], cell_style),
+            Paragraph(m['expiration_date'].strftime('%Y-%m-%d') if m['expiration_date'] else '', cell_style),
+            Paragraph(f"{m['days_remaining']} days" if m['days_remaining'] is not None else '-', cell_style),
+            Paragraph(m['status'], cell_style),
         ])
 
-    # Calculate column widths to fit landscape A4
-    col_widths = [1*inch, 1.8*inch, 1.2*inch, 0.8*inch, 0.6*inch, 1.2*inch, 1*inch, 0.7*inch, 0.9*inch]
+    # Wider columns for Article, Dosage, Category
+    col_widths = [0.9*inch, 1.6*inch, 1.5*inch, 0.7*inch, 0.5*inch, 1.5*inch, 1.0*inch, 0.7*inch, 0.8*inch]
 
     table = Table(data, repeatRows=1, colWidths=col_widths)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#5cb9a4')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f2f2f2')]),
     ]))
     elements.append(table)
     elements.append(Spacer(1, 0.6 * inch))
@@ -778,7 +798,7 @@ def api_export_pdf():
     sig_data = [
         ['Certified Correct By:', '', 'Approved By:'],
         ['\n\n\n', '', '\n\n\n'],
-        ['Signature Over Printed Name of Inventory\nCommittee Chair and Members', '', 'Signature Over Printed Name of Head of\nAgency/Entity of Authorized Representative']
+        ['Signature Over Printed Name of Inventor\nCommittee Chair and Members', '', 'Signature Over Printed Name of Head of\nAgency/Entity of Authorized Representative']
     ]
     
     sig_table = Table(sig_data, colWidths=[3.5*inch, 2*inch, 3.5*inch])
