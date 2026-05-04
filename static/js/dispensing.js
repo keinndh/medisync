@@ -365,33 +365,50 @@
     });
 
     // --- Request Queue ---
+    var queueData = [];
+    var queuePage = 1;
+    
+    window.changeQueuePage = function(page) {
+        queuePage = page;
+        renderQueue();
+    };
+
+    function renderQueue() {
+        var container = document.getElementById('queueList');
+        if (!queueData.length) {
+            container.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><div class="empty-title">No pending requests</div><div class="empty-sub">Queue is empty</div></div>';
+            document.getElementById('queuePagination').innerHTML = '';
+            return;
+        }
+
+        var pageData = window.paginateData(queueData, queuePage, 10);
+        window.renderPagination('queuePagination', queueData.length, queuePage, 10, 'changeQueuePage');
+
+        container.innerHTML = pageData.map(function (q) {
+            var isPriority = q.priority > 0;
+            var borderStyle = isPriority ? 'border-color: var(--info); box-shadow: 0 0 0 1px var(--info);' : '';
+            return '<div class="queue-item" style="' + borderStyle + '" onclick="showQueueDetail(' + q.id + ')">' +
+                '<div class="queue-info">' +
+                '<div class="queue-title">' +
+                (isPriority ? '<span class="badge badge-pending" style="margin-right:6px;font-size:0.7rem;">Priority</span>' : '') +
+                escapeHtml(q.medicine_name) + ' &mdash; Qty: ' + q.quantity_requested + '</div>' +
+                '<div class="queue-detail">Recipient: ' + escapeHtml(q.recipient_name) + ' | Center: ' + escapeHtml(q.center_name || 'N/A') + '</div>' +
+                '</div>' +
+                '<div class="queue-actions" onclick="event.stopPropagation()">' +
+                '<button class="btn btn-outline btn-sm" onclick="prioritizeQueue(' + q.id + ')">Prioritize</button>' +
+                '<button class="btn btn-primary btn-sm" onclick="fulfillQueue(' + q.id + ')">Fulfill</button>' +
+                '</div></div>';
+        }).join('');
+    }
+
     async function loadQueue() {
         try {
             var res = await fetch(window.API_BASE + '/api/queue');
             var items = await res.json();
-            var container = document.getElementById('queueList');
             document.getElementById('queueCount').textContent = items.length + ' pending';
-
-            if (!items.length) {
-                container.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><div class="empty-title">No pending requests</div><div class="empty-sub">Queue is empty</div></div>';
-                return;
-            }
-
-            container.innerHTML = items.map(function (q) {
-                var isPriority = q.priority > 0;
-                var borderStyle = isPriority ? 'border-color: var(--info); box-shadow: 0 0 0 1px var(--info);' : '';
-                return '<div class="queue-item" style="' + borderStyle + '" onclick="showQueueDetail(' + q.id + ')">' +
-                    '<div class="queue-info">' +
-                    '<div class="queue-title">' +
-                    (isPriority ? '<span class="badge badge-pending" style="margin-right:6px;font-size:0.7rem;">Priority</span>' : '') +
-                    escapeHtml(q.medicine_name) + ' &mdash; Qty: ' + q.quantity_requested + '</div>' +
-                    '<div class="queue-detail">Recipient: ' + escapeHtml(q.recipient_name) + ' | Center: ' + escapeHtml(q.center_name || 'N/A') + '</div>' +
-                    '</div>' +
-                    '<div class="queue-actions" onclick="event.stopPropagation()">' +
-                    '<button class="btn btn-outline btn-sm" onclick="prioritizeQueue(' + q.id + ')">Prioritize</button>' +
-                    '<button class="btn btn-primary btn-sm" onclick="fulfillQueue(' + q.id + ')">Fulfill</button>' +
-                    '</div></div>';
-            }).join('');
+            queueData = items;
+            queuePage = 1;
+            renderQueue();
         } catch (e) { /* ignore */ }
     }
 
@@ -526,26 +543,46 @@
         return remarks.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
     }
 
+    var todayData = [];
+    var todayPage = 1;
+    
+    window.changeTodayPage = function(page) {
+        todayPage = page;
+        renderToday();
+    };
+
+    function renderToday() {
+        var tbody = document.getElementById('todayBody');
+        if (!todayData.length) {
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="9">No dispensing records for today</td></tr>';
+            document.getElementById('todayPagination').innerHTML = '';
+            return;
+        }
+        
+        var pageData = window.paginateData(todayData, todayPage, 10);
+        window.renderPagination('todayPagination', todayData.length, todayPage, 10, 'changeTodayPage');
+
+        tbody.innerHTML = pageData.map(function (d) {
+            return '<tr><td>' + escapeHtml(d.dispenser_name) + '</td><td>' + formatDateTime(d.date_time) +
+                '</td><td>' + escapeHtml(d.medicine_name) + '</td><td>' + d.quantity_dispensed +
+                '</td><td>' + escapeHtml(d.recipient_name) + '</td><td>' + escapeHtml(d.recipient_contact) +
+                '</td><td>' + escapeHtml(d.center_name) + '</td><td>' + formatRemarks(d.remarks) +
+                '</td><td><a href="/api/dispense/' + d.id + '/receipt" class="btn btn-ghost btn-sm" target="_blank">' +
+                '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+                ' PDF</a></td></tr>';
+        }).join('');
+    }
+
     async function loadToday() {
         try {
             var res = await fetch(window.API_BASE + '/api/dispense/today');
             var items = await res.json();
-            var tbody = document.getElementById('todayBody');
-            if (!items.length) {
-                tbody.innerHTML = '<tr class="empty-row"><td colspan="9">No dispensing records for today</td></tr>';
-                return;
-            }
-            tbody.innerHTML = items.map(function (d) {
-                return '<tr><td>' + escapeHtml(d.dispenser_name) + '</td><td>' + formatDateTime(d.date_time) +
-                    '</td><td>' + escapeHtml(d.medicine_name) + '</td><td>' + d.quantity_dispensed +
-                    '</td><td>' + escapeHtml(d.recipient_name) + '</td><td>' + escapeHtml(d.recipient_contact) +
-                    '</td><td>' + escapeHtml(d.center_name) + '</td><td>' + formatRemarks(d.remarks) +
-                    '</td><td><a href="/api/dispense/' + d.id + '/receipt" class="btn btn-ghost btn-sm" target="_blank">' +
-                    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
-                    ' PDF</a></td></tr>';
-            }).join('');
+            todayData = items;
+            todayPage = 1;
+            renderToday();
         } catch (e) {
             document.getElementById('todayBody').innerHTML = '<tr class="empty-row"><td colspan="9">Failed to load</td></tr>';
+            document.getElementById('todayPagination').innerHTML = '';
         }
     }
 
@@ -562,6 +599,34 @@
     });
     document.getElementById('historyDate').addEventListener('change', loadHistory);
 
+    var historyData = [];
+    var historyPage = 1;
+    
+    window.changeHistoryPage = function(page) {
+        historyPage = page;
+        renderHistory();
+    };
+
+    function renderHistory() {
+        var tbody = document.getElementById('historyBody');
+        if (!historyData.length) {
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="9">No history found</td></tr>';
+            document.getElementById('historyPagination').innerHTML = '';
+            return;
+        }
+        
+        var pageData = window.paginateData(historyData, historyPage, 10);
+        window.renderPagination('historyPagination', historyData.length, historyPage, 10, 'changeHistoryPage');
+
+        tbody.innerHTML = pageData.map(function (d) {
+            return '<tr><td>' + d.id + '</td><td>' + escapeHtml(d.dispenser_name) +
+                '</td><td>' + formatDateTime(d.date_time) + '</td><td>' + escapeHtml(d.medicine_name) +
+                '</td><td>' + d.quantity_dispensed + '</td><td>' + escapeHtml(d.recipient_name) +
+                '</td><td>' + escapeHtml(d.recipient_contact) + '</td><td>' + escapeHtml(d.center_name) +
+                '</td><td><a href="/api/dispense/' + d.id + '/receipt" class="btn btn-ghost btn-sm" target="_blank">PDF</a></td></tr>';
+        }).join('');
+    }
+
     async function loadHistory() {
         var params = new URLSearchParams();
         var search = document.getElementById('historySearch').value.trim();
@@ -572,20 +637,12 @@
         try {
             var res = await fetch(window.API_BASE + '/api/dispense/history?' + params.toString());
             var items = await res.json();
-            var tbody = document.getElementById('historyBody');
-            if (!items.length) {
-                tbody.innerHTML = '<tr class="empty-row"><td colspan="9">No history found</td></tr>';
-                return;
-            }
-            tbody.innerHTML = items.map(function (d) {
-                return '<tr><td>' + d.id + '</td><td>' + escapeHtml(d.dispenser_name) +
-                    '</td><td>' + formatDateTime(d.date_time) + '</td><td>' + escapeHtml(d.medicine_name) +
-                    '</td><td>' + d.quantity_dispensed + '</td><td>' + escapeHtml(d.recipient_name) +
-                    '</td><td>' + escapeHtml(d.recipient_contact) + '</td><td>' + escapeHtml(d.center_name) +
-                    '</td><td><a href="/api/dispense/' + d.id + '/receipt" class="btn btn-ghost btn-sm" target="_blank">PDF</a></td></tr>';
-            }).join('');
+            historyData = items;
+            historyPage = 1;
+            renderHistory();
         } catch (e) {
             document.getElementById('historyBody').innerHTML = '<tr class="empty-row"><td colspan="9">Failed</td></tr>';
+            document.getElementById('historyPagination').innerHTML = '';
         }
     }
 

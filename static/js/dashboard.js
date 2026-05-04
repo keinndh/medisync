@@ -53,6 +53,79 @@
         });
     });
 
+    // --- Aggregated "Hidden Batch" Logic ---
+    function aggregateMedicines(medicines) {
+        var groups = {};
+        medicines.forEach(m => {
+            var baseStock = m.stock_number;
+            var parts = m.stock_number.split('-');
+            if (parts.length > 1 && !isNaN(parts[parts.length-1])) {
+                baseStock = parts[0]; 
+            }
+
+            var key = m.article_name + '|' + (m.description_dosage || '') + '|' + m.unit_of_measurement + '|' + m.status;
+            if (!groups[key]) {
+                groups[key] = Object.assign({}, m);
+                groups[key].stock_number = baseStock;
+                groups[key].quantity = 0;
+            }
+            groups[key].quantity += m.quantity;
+            var d1 = groups[key].expiration_date ? new Date(groups[key].expiration_date) : new Date(8640000000000000);
+            var d2 = m.expiration_date ? new Date(m.expiration_date) : new Date(8640000000000000);
+            if (d2 < d1) {
+                groups[key].expiration_date = m.expiration_date;
+                groups[key].days_remaining = m.days_remaining;
+            }
+        });
+        return Object.values(groups);
+    }
+
+    var currentBlockPage = 1;
+    var currentBlockData = [];
+    var currentBlockType = '';
+    
+    window.changeDashboardBlockPage = function(page) {
+        currentBlockPage = page;
+        renderBlockTable();
+    };
+
+    function renderBlockTable() {
+        var thead = document.getElementById('blockTableHead');
+        var tbody = document.getElementById('blockTableBody');
+
+        if (!currentBlockData.length) {
+            if (currentBlockType === 'dispensed') {
+                thead.innerHTML = '<tr><th>Dispenser</th><th>Medicine</th><th>Qty</th><th>Recipient</th><th>Center</th><th>Date</th></tr>';
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No items found</td></tr>';
+            } else {
+                thead.innerHTML = '<tr><th>Stock #</th><th>Article</th><th>Unit</th><th>Qty</th><th>Generic Name</th><th>Exp. Date</th><th>Status</th></tr>';
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No items found</td></tr>';
+            }
+            document.getElementById('blockPagination').innerHTML = '';
+            return;
+        }
+
+        var pageData = window.paginateData(currentBlockData, currentBlockPage, 10);
+        window.renderPagination('blockPagination', currentBlockData.length, currentBlockPage, 10, 'changeDashboardBlockPage');
+
+        if (currentBlockType === 'dispensed') {
+            thead.innerHTML = '<tr><th>Dispenser</th><th>Medicine</th><th>Qty</th><th>Recipient</th><th>Center</th><th>Date</th></tr>';
+            tbody.innerHTML = pageData.map(function (d) {
+                return '<tr><td>' + escapeHtml(d.dispenser_name) + '</td><td>' + escapeHtml(d.medicine_name) +
+                    '</td><td>' + d.quantity_dispensed + '</td><td>' + escapeHtml(d.recipient_name) +
+                    '</td><td>' + escapeHtml(d.center_name) + '</td><td>' + formatDateTime(d.date_time) + '</td></tr>';
+            }).join('');
+        } else {
+            thead.innerHTML = '<tr><th>Stock #</th><th>Article</th><th>Unit</th><th>Qty</th><th>Generic Name</th><th>Exp. Date</th><th>Status</th></tr>';
+            tbody.innerHTML = pageData.map(function (m) {
+                return '<tr><td>' + escapeHtml(m.stock_number) + '</td><td>' + escapeHtml(m.article_name) +
+                    '</td><td>' + escapeHtml(m.unit_of_measurement) + '</td><td>' + m.quantity +
+                    '</td><td>' + escapeHtml(m.category) + '</td><td>' + formatDate(m.expiration_date) +
+                    '</td><td>' + statusBadge(m.status) + '</td></tr>';
+            }).join('');
+        }
+    }
+
     async function showBlockPopup(type) {
         var titles = {
             total: 'Total Items', about_to_expire: 'About to Expire',
@@ -63,25 +136,15 @@
         try {
             var res = await fetch(window.API_BASE + '/api/dashboard/block/' + type);
             var items = await res.json();
-            var thead = document.getElementById('blockTableHead');
-            var tbody = document.getElementById('blockTableBody');
-
-            if (type === 'dispensed') {
-                thead.innerHTML = '<tr><th>Dispenser</th><th>Medicine</th><th>Qty</th><th>Recipient</th><th>Center</th><th>Date</th></tr>';
-                tbody.innerHTML = items.length ? items.map(function (d) {
-                    return '<tr><td>' + escapeHtml(d.dispenser_name) + '</td><td>' + escapeHtml(d.medicine_name) +
-                        '</td><td>' + d.quantity_dispensed + '</td><td>' + escapeHtml(d.recipient_name) +
-                        '</td><td>' + escapeHtml(d.center_name) + '</td><td>' + formatDateTime(d.date_time) + '</td></tr>';
-                }).join('') : '<tr class="empty-row"><td colspan="6">No items found</td></tr>';
-            } else {
-                thead.innerHTML = '<tr><th>Stock #</th><th>Article</th><th>Unit</th><th>Qty</th><th>Generic Name</th><th>Exp. Date</th><th>Status</th></tr>';
-                tbody.innerHTML = items.length ? items.map(function (m) {
-                    return '<tr><td>' + escapeHtml(m.stock_number) + '</td><td>' + escapeHtml(m.article_name) +
-                        '</td><td>' + escapeHtml(m.unit_of_measurement) + '</td><td>' + m.quantity +
-                        '</td><td>' + escapeHtml(m.category) + '</td><td>' + formatDate(m.expiration_date) +
-                        '</td><td>' + statusBadge(m.status) + '</td></tr>';
-                }).join('') : '<tr class="empty-row"><td colspan="7">No items found</td></tr>';
+            
+            if (type !== 'dispensed') {
+                items = aggregateMedicines(items);
             }
+            
+            currentBlockType = type;
+            currentBlockData = items;
+            currentBlockPage = 1;
+            renderBlockTable();
             openModal('blockModal');
         } catch (e) { showToast('Failed to load data', 'error'); }
     }
@@ -110,44 +173,84 @@
     }
 
     // --- Load Expired ---
+    var expiredData = [];
+    var expiredPage = 1;
+    
+    window.changeExpiredPage = function(page) {
+        expiredPage = page;
+        renderExpired();
+    };
+
+    function renderExpired() {
+        var tbody = document.getElementById('expiredBody');
+        if (!expiredData.length) {
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No expired medicines</td></tr>';
+            document.getElementById('expiredPagination').innerHTML = '';
+            return;
+        }
+        
+        var pageData = window.paginateData(expiredData, expiredPage, 10);
+        window.renderPagination('expiredPagination', expiredData.length, expiredPage, 10, 'changeExpiredPage');
+
+        tbody.innerHTML = pageData.map(function (m) {
+            var days = m.days_remaining !== null ? m.days_remaining : '-';
+            return '<tr><td>' + escapeHtml(m.article_name) + '</td><td>' + escapeHtml(m.category) +
+                '</td><td>' + escapeHtml(m.unit_of_measurement) + '</td><td>' + m.quantity +
+                '</td><td>' + formatDate(m.expiration_date) + '</td><td style="color:var(--coral);font-weight:700;">' + days +
+                '</td><td>' + statusBadge(m.status) + '</td></tr>';
+        }).join('');
+    }
+
     async function loadExpired() {
         try {
             var res = await fetch(window.API_BASE + '/api/analytics/expired');
             var items = await res.json();
+            items = aggregateMedicines(items);
             document.getElementById('expiredCount').textContent = items.length;
-            var tbody = document.getElementById('expiredBody');
-            if (!items.length) {
-                tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No expired medicines</td></tr>';
-                return;
-            }
-            tbody.innerHTML = items.map(function (m) {
-                var days = m.days_remaining !== null ? m.days_remaining : '-';
-                return '<tr><td>' + escapeHtml(m.article_name) + '</td><td>' + escapeHtml(m.category) +
-                    '</td><td>' + escapeHtml(m.unit_of_measurement) + '</td><td>' + m.quantity +
-                    '</td><td>' + formatDate(m.expiration_date) + '</td><td style="color:var(--coral);font-weight:700;">' + days +
-                    '</td><td>' + statusBadge(m.status) + '</td></tr>';
-            }).join('');
+            expiredData = items;
+            expiredPage = 1;
+            renderExpired();
         } catch (e) { /* ignore */ }
     }
 
     // --- Load About to Expire ---
+    var expiringData = [];
+    var expiringPage = 1;
+
+    window.changeExpiringPage = function(page) {
+        expiringPage = page;
+        renderExpiring();
+    };
+
+    function renderExpiring() {
+        var tbody = document.getElementById('expiringBody');
+        if (!expiringData.length) {
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No medicines about to expire</td></tr>';
+            document.getElementById('expiringPagination').innerHTML = '';
+            return;
+        }
+
+        var pageData = window.paginateData(expiringData, expiringPage, 10);
+        window.renderPagination('expiringPagination', expiringData.length, expiringPage, 10, 'changeExpiringPage');
+
+        tbody.innerHTML = pageData.map(function (m) {
+            var days = m.days_remaining !== null ? m.days_remaining : '-';
+            return '<tr><td>' + escapeHtml(m.article_name) + '</td><td>' + escapeHtml(m.category) +
+                '</td><td>' + escapeHtml(m.unit_of_measurement) + '</td><td>' + m.quantity +
+                '</td><td>' + formatDate(m.expiration_date) + '</td><td style="color:var(--yellow);font-weight:700;">' + days +
+                '</td><td>' + statusBadge(m.status) + '</td></tr>';
+        }).join('');
+    }
+
     async function loadExpiring() {
         try {
             var res = await fetch(window.API_BASE + '/api/analytics/expiring');
             var items = await res.json();
+            items = aggregateMedicines(items);
             document.getElementById('expiringCount').textContent = items.length;
-            var tbody = document.getElementById('expiringBody');
-            if (!items.length) {
-                tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No medicines about to expire</td></tr>';
-                return;
-            }
-            tbody.innerHTML = items.map(function (m) {
-                var days = m.days_remaining !== null ? m.days_remaining : '-';
-                return '<tr><td>' + escapeHtml(m.article_name) + '</td><td>' + escapeHtml(m.category) +
-                    '</td><td>' + escapeHtml(m.unit_of_measurement) + '</td><td>' + m.quantity +
-                    '</td><td>' + formatDate(m.expiration_date) + '</td><td style="color:var(--yellow);font-weight:700;">' + days +
-                    '</td><td>' + statusBadge(m.status) + '</td></tr>';
-            }).join('');
+            expiringData = items;
+            expiringPage = 1;
+            renderExpiring();
         } catch (e) { /* ignore */ }
     }
 

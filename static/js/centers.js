@@ -161,44 +161,88 @@
         }
     };
 
+    var currentCenterDispData = [];
+    var currentCenterQueueData = [];
+    var currentCenterDispPage = 1;
+    var currentCenterQueuePage = 1;
+    var currentOpenCenterId = null;
+
+    window.changeCenterDispPage = function(page) {
+        currentCenterDispPage = page;
+        renderCenterTransactions();
+    };
+
+    window.changeCenterQueuePage = function(page) {
+        currentCenterQueuePage = page;
+        renderCenterTransactions();
+    };
+
+    function renderCenterTransactions() {
+        if (!currentOpenCenterId) return;
+        var body = document.getElementById('centerBody' + currentOpenCenterId);
+        if (!body) return;
+
+        var html = '';
+        if (currentCenterDispData.length) {
+            html += '<h4 style="font-weight:700;margin-bottom:8px;font-size:0.9rem;">Dispensing Transactions</h4>';
+            html += '<div class="table-wrapper"><table class="data-table"><thead><tr><th>Date</th><th>Medicine</th><th>Qty</th><th>Recipient</th><th>Contact</th><th>Dispenser</th></tr></thead><tbody>';
+            var pageData = window.paginateData(currentCenterDispData, currentCenterDispPage, 10);
+            html += pageData.map(function (d) {
+                return '<tr><td>' + formatDateTime(d.date_time) + '</td><td>' + escapeHtml(d.medicine_name) +
+                    '</td><td>' + d.quantity_dispensed + '</td><td>' + escapeHtml(d.recipient_name) +
+                    '</td><td>' + escapeHtml(d.recipient_contact || 'N/A') +
+                    '</td><td>' + escapeHtml(d.dispenser_name) + '</td></tr>';
+            }).join('');
+            html += '</tbody></table></div>';
+            html += '<div id="centerDispPagination" style="padding: 8px 0 16px;"></div>';
+        }
+        if (currentCenterQueueData.length) {
+            html += '<h4 style="font-weight:700;margin:16px 0 8px;font-size:0.9rem;">Queued Requests</h4>';
+            html += '<div class="table-wrapper"><table class="data-table"><thead><tr><th>Date</th><th>Medicine</th><th>Qty</th><th>Recipient</th><th>Status</th></tr></thead><tbody>';
+            var pageData = window.paginateData(currentCenterQueueData, currentCenterQueuePage, 10);
+            html += pageData.map(function (q) {
+                return '<tr><td>' + formatDateTime(q.created_at) + '</td><td>' + escapeHtml(q.medicine_name) +
+                    '</td><td>' + q.quantity_requested + '</td><td>' + escapeHtml(q.recipient_name) +
+                    '</td><td>' + statusBadge(q.status) + '</td></tr>';
+            }).join('');
+            html += '</tbody></table></div>';
+            html += '<div id="centerQueuePagination" style="padding: 8px 0 16px;"></div>';
+        }
+        if (!currentCenterDispData.length && !currentCenterQueueData.length) {
+            html = '<div class="empty-state" style="padding:24px;"><div class="empty-title">No transactions</div><div class="empty-sub">No dispensing or queue records for this center</div></div>';
+        }
+        
+        body.innerHTML = html;
+        
+        if (currentCenterDispData.length) {
+            window.renderPagination('centerDispPagination', currentCenterDispData.length, currentCenterDispPage, 10, 'changeCenterDispPage');
+        }
+        if (currentCenterQueueData.length) {
+            window.renderPagination('centerQueuePagination', currentCenterQueueData.length, currentCenterQueuePage, 10, 'changeCenterQueuePage');
+        }
+    }
+
     window.toggleCenter = async function (header, centerId) {
         var body = document.getElementById('centerBody' + centerId);
         var isOpen = header.classList.contains('open');
         document.querySelectorAll('.center-group-header').forEach(function (h) { h.classList.remove('open'); });
         document.querySelectorAll('.center-group-body').forEach(function (b) { b.classList.remove('show'); });
-        if (isOpen) return;
+        if (isOpen) {
+            currentOpenCenterId = null;
+            return;
+        }
         header.classList.add('open');
         body.classList.add('show');
+        currentOpenCenterId = centerId;
+        currentCenterDispPage = 1;
+        currentCenterQueuePage = 1;
 
         try {
             var res = await fetch(window.API_BASE + '/api/centers/' + centerId + '/transactions');
             var data = await res.json();
-            var html = '';
-            if (data.dispensings.length) {
-                html += '<h4 style="font-weight:700;margin-bottom:8px;font-size:0.9rem;">Dispensing Transactions</h4>';
-                html += '<div class="table-wrapper"><table class="data-table"><thead><tr><th>Date</th><th>Medicine</th><th>Qty</th><th>Recipient</th><th>Contact</th><th>Dispenser</th></tr></thead><tbody>';
-                html += data.dispensings.map(function (d) {
-                    return '<tr><td>' + formatDateTime(d.date_time) + '</td><td>' + escapeHtml(d.medicine_name) +
-                        '</td><td>' + d.quantity_dispensed + '</td><td>' + escapeHtml(d.recipient_name) +
-                        '</td><td>' + escapeHtml(d.recipient_contact || 'N/A') +
-                        '</td><td>' + escapeHtml(d.dispenser_name) + '</td></tr>';
-                }).join('');
-                html += '</tbody></table></div>';
-            }
-            if (data.queued.length) {
-                html += '<h4 style="font-weight:700;margin:16px 0 8px;font-size:0.9rem;">Queued Requests</h4>';
-                html += '<div class="table-wrapper"><table class="data-table"><thead><tr><th>Date</th><th>Medicine</th><th>Qty</th><th>Recipient</th><th>Status</th></tr></thead><tbody>';
-                html += data.queued.map(function (q) {
-                    return '<tr><td>' + formatDateTime(q.created_at) + '</td><td>' + escapeHtml(q.medicine_name) +
-                        '</td><td>' + q.quantity_requested + '</td><td>' + escapeHtml(q.recipient_name) +
-                        '</td><td>' + statusBadge(q.status) + '</td></tr>';
-                }).join('');
-                html += '</tbody></table></div>';
-            }
-            if (!data.dispensings.length && !data.queued.length) {
-                html = '<div class="empty-state" style="padding:24px;"><div class="empty-title">No transactions</div><div class="empty-sub">No dispensing or queue records for this center</div></div>';
-            }
-            body.innerHTML = html;
+            currentCenterDispData = data.dispensings;
+            currentCenterQueueData = data.queued;
+            renderCenterTransactions();
         } catch (e) {
             body.innerHTML = '<div style="padding:16px;color:var(--coral);">Failed to load transactions</div>';
         }

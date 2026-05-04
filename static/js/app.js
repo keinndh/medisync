@@ -397,6 +397,38 @@ function statusBadge(status) {
 }
 window.statusBadge = statusBadge;
 
+// --- Pagination Utility ---
+window.paginateData = function(data, page, pageSize) {
+    var start = (page - 1) * pageSize;
+    return data.slice(start, start + pageSize);
+};
+
+window.renderPagination = function(containerId, totalItems, currentPage, pageSize, onPageChangeName) {
+    var totalPages = Math.ceil(totalItems / pageSize);
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    
+    if (totalPages <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    var html = '<div class="pagination" style="display:flex; justify-content:center; gap:4px; margin-top:16px;">';
+    html += '<button class="btn btn-sm btn-outline ' + (currentPage === 1 ? 'disabled' : '') + '" onclick="if(' + currentPage + '>1) window.' + onPageChangeName + '(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '>Prev</button>';
+    
+    for (var i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+            html += '<button class="btn btn-sm ' + (i === currentPage ? 'btn-primary' : 'btn-outline') + '" onclick="window.' + onPageChangeName + '(' + i + ')">' + i + '</button>';
+        } else if (i === currentPage - 2 || i === currentPage + 2) {
+            html += '<span style="padding: 4px 8px;">...</span>';
+        }
+    }
+    
+    html += '<button class="btn btn-sm btn-outline ' + (currentPage === totalPages ? 'disabled' : '') + '" onclick="if(' + currentPage + '<' + totalPages + ') window.' + onPageChangeName + '(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>Next</button>';
+    html += '</div>';
+    container.innerHTML = html;
+};
+
 // --- Remove Preload Transition Lock ---
 window.addEventListener("load", function () {
   document.body.classList.remove("preload");

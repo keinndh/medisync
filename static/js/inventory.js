@@ -116,7 +116,46 @@
         input.addEventListener('blur', () => setTimeout(() => dropdown.classList.remove('show'), 200));
     }
 
+    // --- Aggregated "Hidden Batch" Logic ---
+    function aggregateMedicines(medicines) {
+        var groups = {};
+        medicines.forEach(m => {
+            var baseStock = m.stock_number;
+            var parts = m.stock_number.split('-');
+            if (parts.length > 1 && !isNaN(parts[parts.length-1])) {
+                baseStock = parts[0]; 
+            }
+
+            var key = m.article_name + '|' + (m.description_dosage || '') + '|' + m.unit_of_measurement + '|' + m.status;
+            if (!groups[key]) {
+                groups[key] = Object.assign({}, m);
+                groups[key].stock_number = baseStock;
+                groups[key].quantity = 0;
+                groups[key].batches = [];
+            }
+            groups[key].quantity += m.quantity;
+            var d1 = groups[key].expiration_date ? new Date(groups[key].expiration_date) : new Date(8640000000000000);
+            var d2 = m.expiration_date ? new Date(m.expiration_date) : new Date(8640000000000000);
+            if (d2 < d1) {
+                groups[key].expiration_date = m.expiration_date;
+                groups[key].days_remaining = m.days_remaining;
+                groups[key].id = m.id; // representative ID
+            }
+            groups[key].batches.push(m);
+        });
+        return Object.values(groups);
+    }
+
     // --- Load Medicines ---
+    var aggregatedMedicines = [];
+    var currentInventoryPage = 1;
+    var inventoryPageSize = 10;
+
+    window.changeInventoryPage = function(page) {
+        currentInventoryPage = page;
+        renderTable();
+    };
+
     async function loadMedicines() {
         var params = new URLSearchParams();
         
@@ -149,19 +188,27 @@
         try {
             var res = await fetch(window.API_BASE + '/api/medicines?' + params.toString());
             allMedicines = await res.json();
+            aggregatedMedicines = aggregateMedicines(allMedicines);
+            currentInventoryPage = 1;
             renderTable();
         } catch (e) {
             document.getElementById('inventoryBody').innerHTML = '<tr class="empty-row"><td colspan="11">Failed to load inventory</td></tr>';
+            document.getElementById('inventoryPagination').innerHTML = '';
         }
     }
 
     function renderTable() {
         var tbody = document.getElementById('inventoryBody');
-        if (!allMedicines.length) {
+        if (!aggregatedMedicines.length) {
             tbody.innerHTML = '<tr class="empty-row"><td colspan="12">No medicines found</td></tr>';
+            document.getElementById('inventoryPagination').innerHTML = '';
             return;
         }
-        tbody.innerHTML = allMedicines.map(function (m) {
+        
+        var pageData = window.paginateData(aggregatedMedicines, currentInventoryPage, inventoryPageSize);
+        window.renderPagination('inventoryPagination', aggregatedMedicines.length, currentInventoryPage, inventoryPageSize, 'changeInventoryPage');
+
+        tbody.innerHTML = pageData.map(function (m) {
             var actions = '<div class="actions">' +
                 '<button class="btn btn-outline btn-sm" onclick="editMedicine(' + m.id + ')">Edit</button>' +
                 '<button class="btn btn-yellow btn-sm" onclick="discardMedicine(' + m.id + ')">Discard</button>' +
@@ -427,22 +474,31 @@
 
     // --- Discard Medicine ---
     window.discardMedicine = function (id) {
-        document.getElementById('discardMedId').value = id;
+        var group = aggregatedMedicines.find(g => g.id === id);
+        if (group && group.batches) {
+            document.getElementById('discardMedId').value = JSON.stringify(group.batches.map(b => b.id));
+        } else {
+            document.getElementById('discardMedId').value = JSON.stringify([id]);
+        }
         document.getElementById('discardReason').value = '';
         openModal('discardModal');
     };
     document.getElementById('discardConfirmBtn').addEventListener('click', async function () {
-        var id = document.getElementById('discardMedId').value;
+        var ids = JSON.parse(document.getElementById('discardMedId').value);
         var reason = document.getElementById('discardReason').value.trim();
         if (!reason) { showToast('Please provide a reason.', 'error'); return; }
         try {
-            var res = await fetch(window.API_BASE + '/api/medicines/' + id + '/discard', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ reason: reason })
-            });
-            if (res.ok) {
-                showToast('Medicine discarded.');
+            var successCount = 0;
+            for (var id of ids) {
+                var res = await fetch(window.API_BASE + '/api/medicines/' + id + '/discard', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: reason })
+                });
+                if (res.ok) successCount++;
+            }
+            if (successCount > 0) {
+                showToast('Medicine discarded successfully.');
                 closeModal('discardModal');
                 loadMedicines();
                 loadInvStats();
@@ -452,22 +508,31 @@
 
     // --- Delete Medicine ---
     window.deleteMedicine = function (id) {
-        document.getElementById('deleteMedId').value = id;
+        var group = aggregatedMedicines.find(g => g.id === id);
+        if (group && group.batches) {
+            document.getElementById('deleteMedId').value = JSON.stringify(group.batches.map(b => b.id));
+        } else {
+            document.getElementById('deleteMedId').value = JSON.stringify([id]);
+        }
         document.getElementById('deleteReason').value = '';
         openModal('deleteModal');
     };
     document.getElementById('deleteConfirmBtn').addEventListener('click', async function () {
-        var id = document.getElementById('deleteMedId').value;
+        var ids = JSON.parse(document.getElementById('deleteMedId').value);
         var reason = document.getElementById('deleteReason').value.trim();
         if (!reason) { showToast('Please provide a reason.', 'error'); return; }
         try {
-            var res = await fetch(window.API_BASE + '/api/medicines/' + id, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ reason: reason })
-            });
-            if (res.ok) {
-                showToast('Medicine deleted.');
+            var successCount = 0;
+            for (var id of ids) {
+                var res = await fetch(window.API_BASE + '/api/medicines/' + id, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: reason })
+                });
+                if (res.ok) successCount++;
+            }
+            if (successCount > 0) {
+                showToast('Medicine deleted successfully.');
                 closeModal('deleteModal');
                 loadMedicines();
                 loadInvStats();
@@ -483,6 +548,59 @@
         });
     });
 
+    var currentBlockPage = 1;
+    var currentBlockData = [];
+    var currentBlockType = '';
+    
+    window.changeInvBlockPage = function(page) {
+        currentBlockPage = page;
+        renderInvBlockTable();
+    };
+
+    function renderInvBlockTable() {
+        var thead = document.getElementById('invBlockTableHead');
+        var tbody = document.getElementById('invBlockTableBody');
+        
+        if (!currentBlockData.length) {
+            if (currentBlockType === 'dispensed') {
+                thead.innerHTML = '<tr><th>Dispenser</th><th>Medicine</th><th>Qty</th><th>Recipient</th><th>Center</th><th>Date</th></tr>';
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No items</td></tr>';
+            } else {
+                thead.innerHTML = '<tr><th>Stock #</th><th>Article</th><th>Unit</th><th>Qty</th><th>Generic Name</th><th>Exp. Date</th><th>Days</th><th>Status</th></tr>';
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="8">No items</td></tr>';
+            }
+            document.getElementById('invBlockPagination').innerHTML = '';
+            return;
+        }
+
+        var pageData = window.paginateData(currentBlockData, currentBlockPage, 10);
+        window.renderPagination('invBlockPagination', currentBlockData.length, currentBlockPage, 10, 'changeInvBlockPage');
+
+        if (currentBlockType === 'dispensed') {
+            thead.innerHTML = '<tr><th>Dispenser</th><th>Medicine</th><th>Qty</th><th>Recipient</th><th>Center</th><th>Date</th></tr>';
+            tbody.innerHTML = pageData.map(function (d) {
+                return '<tr><td>' + escapeHtml(d.dispenser_name) + '</td><td>' + escapeHtml(d.medicine_name) +
+                    '</td><td>' + d.quantity_dispensed + '</td><td>' + escapeHtml(d.recipient_name) +
+                    '</td><td>' + escapeHtml(d.center_name) + '</td><td>' + formatDateTime(d.date_time) + '</td></tr>';
+            }).join('');
+        } else {
+            thead.innerHTML = '<tr><th>Stock #</th><th>Article</th><th>Unit</th><th>Qty</th><th>Generic Name</th><th>Exp. Date</th><th>Days</th><th>Status</th></tr>';
+            tbody.innerHTML = pageData.map(function (m) {
+                var popDays = '-';
+                if (m.days_remaining !== null) {
+                    if (m.status === 'Expired') popDays = '<span style="color:var(--coral);font-weight:700;">' + m.days_remaining + '</span>';
+                    else if (m.status === 'Near Expiry') popDays = '<span style="color:var(--yellow);font-weight:700;">' + m.days_remaining + '</span>';
+                    else if (m.status === 'Active') popDays = '<span style="color:var(--primary);font-weight:700;">' + m.days_remaining + '</span>';
+                    else popDays = '<span style="color:var(--text);font-weight:700;">' + m.days_remaining + '</span>';
+                }
+                return '<tr><td>' + escapeHtml(m.stock_number) + '</td><td>' + escapeHtml(m.article_name) +
+                    '</td><td>' + escapeHtml(m.unit_of_measurement) + '</td><td>' + m.quantity + '</td><td>' +
+                    escapeHtml(m.category) + '</td><td>' + formatDate(m.expiration_date) + '</td><td>' + popDays + '</td><td>' +
+                    statusBadge(m.status) + '</td></tr>';
+            }).join('');
+        }
+    }
+
     async function showInvBlockPopup(type) {
         var titles = {
             total: 'Total Items', about_to_expire: 'About to Expire',
@@ -492,31 +610,16 @@
         try {
             var res = await fetch(window.API_BASE + '/api/dashboard/block/' + type);
             var items = await res.json();
-            var thead = document.getElementById('invBlockTableHead');
-            var tbody = document.getElementById('invBlockTableBody');
-            if (type === 'dispensed') {
-                thead.innerHTML = '<tr><th>Dispenser</th><th>Medicine</th><th>Qty</th><th>Recipient</th><th>Center</th><th>Date</th></tr>';
-                tbody.innerHTML = items.length ? items.map(function (d) {
-                    return '<tr><td>' + escapeHtml(d.dispenser_name) + '</td><td>' + escapeHtml(d.medicine_name) +
-                        '</td><td>' + d.quantity_dispensed + '</td><td>' + escapeHtml(d.recipient_name) +
-                        '</td><td>' + escapeHtml(d.center_name) + '</td><td>' + formatDateTime(d.date_time) + '</td></tr>';
-                }).join('') : '<tr class="empty-row"><td colspan="6">No items</td></tr>';
-            } else {
-                thead.innerHTML = '<tr><th>Stock #</th><th>Article</th><th>Unit</th><th>Qty</th><th>Generic Name</th><th>Exp. Date</th><th>Days</th><th>Status</th></tr>';
-                tbody.innerHTML = items.length ? items.map(function (m) {
-                    var popDays = '-';
-                    if (m.days_remaining !== null) {
-                        if (m.status === 'Expired') popDays = '<span style="color:var(--coral);font-weight:700;">' + m.days_remaining + '</span>';
-                        else if (m.status === 'Near Expiry') popDays = '<span style="color:var(--yellow);font-weight:700;">' + m.days_remaining + '</span>';
-                        else if (m.status === 'Active') popDays = '<span style="color:var(--primary);font-weight:700;">' + m.days_remaining + '</span>';
-                        else popDays = '<span style="color:var(--text);font-weight:700;">' + m.days_remaining + '</span>';
-                    }
-                    return '<tr><td>' + escapeHtml(m.stock_number) + '</td><td>' + escapeHtml(m.article_name) +
-                        '</td><td>' + escapeHtml(m.unit_of_measurement) + '</td><td>' + m.quantity + '</td><td>' +
-                        escapeHtml(m.category) + '</td><td>' + formatDate(m.expiration_date) + '</td><td>' + popDays + '</td><td>' +
-                        statusBadge(m.status) + '</td></tr>';
-                }).join('') : '<tr class="empty-row"><td colspan="8">No items</td></tr>';
+            
+            if (type !== 'dispensed') {
+                items = aggregateMedicines(items);
             }
+            
+            currentBlockType = type;
+            currentBlockData = items;
+            currentBlockPage = 1;
+            renderInvBlockTable();
+            
             openModal('invBlockModal');
         } catch (e) { showToast('Failed to load data.', 'error'); }
     }

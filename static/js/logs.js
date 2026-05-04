@@ -100,6 +100,45 @@
     setupMedAutocomplete();
 
     // --- Load Logs ---
+    var logsData = [];
+    var logsPage = 1;
+
+    window.changeLogsPage = function(page) {
+        logsPage = page;
+        renderLogs();
+    };
+
+    function renderLogs() {
+        const tbody = document.getElementById('logsBody');
+        if (!logsData.length) {
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No logs found</td></tr>';
+            document.getElementById('logsPagination').innerHTML = '';
+            return;
+        }
+
+        var pageData = window.paginateData(logsData, logsPage, 10);
+        window.renderPagination('logsPagination', logsData.length, logsPage, 10, 'changeLogsPage');
+
+        tbody.innerHTML = pageData.map((l, i) => {
+            // Formatting details to look "more detailed"
+            let detailsHtml = escapeHtml(l.details);
+            // Highlight keywords if possible
+            if (l.action === 'Dispense') {
+                detailsHtml = `<span style="color:var(--primary-dark); font-weight:600;">${detailsHtml}</span>`;
+            } else if (l.action === 'Delete') {
+                detailsHtml = `<span style="color:var(--coral-dark); font-weight:500;">${detailsHtml}</span>`;
+            }
+
+            return `<tr>
+                <td style="color:var(--text-muted); font-weight:600;">#${l.id}</td>
+                <td style="white-space:nowrap;">${formatDateTime(l.timestamp)}</td>
+                <td>${statusBadge(l.action)}</td>
+                <td style="font-weight:600;">${escapeHtml(l.performed_by)}</td>
+                <td style="line-height:1.4;">${detailsHtml}</td>
+            </tr>`;
+        }).join('');
+    }
+
     async function loadLogs() {
         const params = new URLSearchParams();
         if (currentAction) params.set('action', currentAction);
@@ -122,33 +161,12 @@
         try {
             const res = await fetch(window.API_BASE + '/api/logs?' + params.toString());
             const logs = await res.json();
-            const tbody = document.getElementById('logsBody');
-            
-            if (!logs.length) {
-                tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No logs found</td></tr>';
-                return;
-            }
-
-            tbody.innerHTML = logs.map((l, i) => {
-                // Formatting details to look "more detailed"
-                let detailsHtml = escapeHtml(l.details);
-                // Highlight keywords if possible
-                if (l.action === 'Dispense') {
-                    detailsHtml = `<span style="color:var(--primary-dark); font-weight:600;">${detailsHtml}</span>`;
-                } else if (l.action === 'Delete') {
-                    detailsHtml = `<span style="color:var(--coral-dark); font-weight:500;">${detailsHtml}</span>`;
-                }
-
-                return `<tr>
-                    <td style="color:var(--text-muted); font-weight:600;">#${l.id}</td>
-                    <td style="white-space:nowrap;">${formatDateTime(l.timestamp)}</td>
-                    <td>${statusBadge(l.action)}</td>
-                    <td style="font-weight:600;">${escapeHtml(l.performed_by)}</td>
-                    <td style="line-height:1.4;">${detailsHtml}</td>
-                </tr>`;
-            }).join('');
+            logsData = logs;
+            logsPage = 1;
+            renderLogs();
         } catch (e) {
             document.getElementById('logsBody').innerHTML = '<tr class="empty-row"><td colspan="5">Error loading logs</td></tr>';
+            document.getElementById('logsPagination').innerHTML = '';
         }
     }
 
