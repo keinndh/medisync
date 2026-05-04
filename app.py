@@ -689,139 +689,202 @@ def api_export_pdf():
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    import datetime
     import os
 
+    # ── 1. Fetch all active medicines ────────────────────────────────────────
     medicines = Medicine.query.filter(Medicine.status != 'Deleted').order_by(Medicine.date_added.desc()).all()
-    
-    # Aggregated "Hidden Batch" Logic
-    import datetime
+
+    # ── 2. Aggregate batches ("Hidden Batch" logic) ───────────────────────────
     aggregated = {}
     for m in medicines:
         key = (m.article_name, m.description_dosage or '', m.unit_of_measurement, m.status)
         if key not in aggregated:
             base_stock = m.stock_number
-            # Improved stripping logic: only strip if there are at least 3 parts (STK-001-01)
+            # Only strip the LAST segment if there are 3+ parts (e.g. STK-001-01 → STK-001)
+            # Do NOT strip STK-001 down to just STK
             parts = base_stock.split('-')
             if len(parts) >= 3 and parts[-1].isdigit():
                 base_stock = '-'.join(parts[:-1])
-                
+
             aggregated[key] = {
-                'stock_number': base_stock,
-                'article_name': m.article_name,
+                'stock_number':       base_stock,
+                'article_name':       m.article_name,
                 'description_dosage': m.description_dosage or '',
                 'unit_of_measurement': m.unit_of_measurement,
-                'quantity': 0,
-                'category': m.category or '',
-                'expiration_date': None,
-                'days_remaining': None,
-                'status': m.status
+                'quantity':           0,
+                'category':           m.category or '',
+                'expiration_date':    None,
+                'days_remaining':     None,
+                'status':             m.status,
             }
-            
+
         agg = aggregated[key]
         agg['quantity'] += m.quantity
-        
+
+        # FEFO: keep the soonest expiration date
         d1 = agg['expiration_date']
         d2 = m.expiration_date
         cd1 = d1 if d1 else datetime.date.max
         cd2 = d2 if d2 else datetime.date.max
-        
         if cd2 < cd1:
             agg['expiration_date'] = m.expiration_date
-            agg['days_remaining'] = m.to_dict().get('days_remaining')
-            
+            agg['days_remaining']  = m.to_dict().get('days_remaining')
+
     aggregated_list = list(aggregated.values())
 
+    # ── 3. PDF Setup ──────────────────────────────────────────────────────────
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=0.5*inch, leftMargin=0.5*inch, topMargin=0.5*inch, bottomMargin=0.5*inch)
-    styles = getSampleStyleSheet()
-    
-    title_style = ParagraphStyle('StockTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=14, alignment=TA_CENTER, spaceAfter=6)
-    subtitle_style = ParagraphStyle('StockSubtitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=12, alignment=TA_CENTER, spaceAfter=24)
-    
-    # Cell Styles for wrapping
-    cell_style = ParagraphStyle(
-        'Cell', parent=styles['Normal'],
-        fontName='Helvetica', fontSize=8,
-        alignment=TA_CENTER, leading=10
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=0.5 * inch,
+        leftMargin=0.5 * inch,
+        topMargin=0.5 * inch,
+        bottomMargin=0.5 * inch,
     )
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'StockTitle', parent=styles['Normal'],
+        fontName='Helvetica-Bold', fontSize=14,
+        alignment=TA_CENTER, spaceAfter=4,
+    )
+    subtitle_style = ParagraphStyle(
+        'StockSubtitle', parent=styles['Normal'],
+        fontName='Helvetica-Bold', fontSize=12,
+        alignment=TA_CENTER, spaceAfter=18,
+    )
+
+    # Cell styles — using Paragraph so ReportLab can word-wrap & auto-expand row height
     header_cell_style = ParagraphStyle(
         'HeaderCell', parent=styles['Normal'],
         fontName='Helvetica-Bold', fontSize=9,
-        textColor=colors.white, alignment=TA_CENTER, leading=11
+        textColor=colors.white,
+        alignment=TA_CENTER, leading=11,
     )
-    
+    cell_style = ParagraphStyle(
+        'Cell', parent=styles['Normal'],
+        fontName='Helvetica', fontSize=8,
+        alignment=TA_CENTER, leading=10,
+    )
+
     elements = []
 
+    # ── 4. Header image ───────────────────────────────────────────────────────
     img_path = os.path.join(app.static_folder, 'images', 'print_header.png')
     if os.path.exists(img_path):
-        elements.append(Image(img_path, width=10*inch, height=0.975*inch))
-        elements.append(Spacer(1, 0.1*inch))
+        elements.append(Image(img_path, width=10 * inch, height=0.975 * inch))
+        elements.append(Spacer(1, 0.1 * inch))
 
+    # ── 5. Title block ────────────────────────────────────────────────────────
     elements.append(Paragraph('MEDICAL SUPPLIES STOCK ASSESSMENT REPORT', title_style))
     elements.append(Paragraph(f'AS OF: {manila_today().strftime("%B %d, %Y")}', subtitle_style))
 
-    headers = ['Stock\nNumber', 'Article', 'Dosage', 'Unit', 'Qty.', 'Category', 'Expiration\nDate', 'Days\nLeft', 'Status']
+    # ── 6. Inventory table ────────────────────────────────────────────────────
+    headers = [
+        'Stock\nNumber', 'Article', 'Dosage / Description',
+        'Unit', 'Qty.', 'Category',
+        'Expiration\nDate', 'Days\nLeft', 'Status',
+    ]
     data = [[Paragraph(h, header_cell_style) for h in headers]]
-    
-    for m in aggregated_list:
-        data.append([
-            Paragraph(m['stock_number'], cell_style),
-            Paragraph(m['article_name'], cell_style),
-            Paragraph(m['description_dosage'], cell_style),
-            Paragraph(m['unit_of_measurement'], cell_style),
-            Paragraph(str(m['quantity']), cell_style),
-            Paragraph(m['category'], cell_style),
-            Paragraph(m['expiration_date'].strftime('%Y-%m-%d') if m['expiration_date'] else '', cell_style),
-            Paragraph(f"{m['days_remaining']} days" if m['days_remaining'] is not None else '-', cell_style),
-            Paragraph(m['status'], cell_style),
-        ])
 
-    # Wider columns for Article, Dosage, Category
-    col_widths = [0.9*inch, 1.6*inch, 1.5*inch, 0.7*inch, 0.5*inch, 1.5*inch, 1.0*inch, 0.7*inch, 0.8*inch]
+    for m in aggregated_list:
+        exp_str = m['expiration_date'].strftime('%Y-%m-%d') if m['expiration_date'] else ''
+        days_str = f"{m['days_remaining']} days" if m['days_remaining'] is not None else '-'
+
+        row = [
+            Paragraph(m['stock_number'],        cell_style),
+            Paragraph(m['article_name'],         cell_style),
+            Paragraph(m['description_dosage'],   cell_style),
+            Paragraph(m['unit_of_measurement'],  cell_style),
+            Paragraph(str(m['quantity']),         cell_style),
+            Paragraph(m['category'],             cell_style),
+            Paragraph(exp_str,                   cell_style),
+            Paragraph(days_str,                  cell_style),
+            Paragraph(m['status'],               cell_style),
+        ]
+        data.append(row)
+
+    # Column widths must sum to ≤ page_width − margins (landscape A4 ≈ 11.69 in − 1 in = 10.69 in)
+    col_widths = [
+        0.85 * inch,   # Stock Number
+        1.50 * inch,   # Article
+        1.80 * inch,   # Dosage / Description  ← widest — long combo names go here
+        0.65 * inch,   # Unit
+        0.50 * inch,   # Qty.
+        1.35 * inch,   # Category
+        0.95 * inch,   # Expiration Date
+        0.65 * inch,   # Days Left
+        0.80 * inch,   # Status
+    ]  # total = 9.05 in — fits comfortably
 
     table = Table(data, repeatRows=1, colWidths=col_widths)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#5cb9a4')),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        # Header row
+        ('BACKGROUND',    (0, 0), (-1, 0),  colors.HexColor('#5cb9a4')),
+        ('TEXTCOLOR',     (0, 0), (-1, 0),  colors.white),
+        # Grid
+        ('GRID',          (0, 0), (-1, -1), 0.5, colors.black),
+        # Alignment & valign
+        ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+        # Padding — gives wrapped text breathing room
+        ('TOPPADDING',    (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f2f2f2')]),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 4),
+        # Zebra striping for readability
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0faf8')]),
     ]))
-    elements.append(table)
-    elements.append(Spacer(1, 0.6 * inch))
 
-    # Add signature section
+    elements.append(table)
+    elements.append(Spacer(1, 0.5 * inch))
+
+    # ── 7. Signature section ──────────────────────────────────────────────────
+    sig_label_style = ParagraphStyle(
+        'SigLabel', parent=styles['Normal'],
+        fontName='Helvetica-Bold', fontSize=9, alignment=TA_LEFT,
+    )
+    sig_sub_style = ParagraphStyle(
+        'SigSub', parent=styles['Normal'],
+        fontName='Helvetica', fontSize=9, alignment=TA_CENTER,
+    )
+
     sig_data = [
-        ['Certified Correct By:', '', 'Approved By:'],
-        ['\n\n\n', '', '\n\n\n'],
-        ['Signature Over Printed Name of Inventor\nCommittee Chair and Members', '', 'Signature Over Printed Name of Head of\nAgency/Entity of Authorized Representative']
+        [Paragraph('Certified Correct By:', sig_label_style), '', Paragraph('Approved By:', sig_label_style)],
+        ['\n\n\n', '', '\n\n\n'],   # blank rows = space for handwritten signatures
+        [
+            Paragraph('Signature Over Printed Name of Inventory\nCommittee Chair and Members', sig_sub_style),
+            '',
+            Paragraph('Signature Over Printed Name of Head of\nAgency/Entity or Authorized Representative', sig_sub_style),
+        ],
     ]
-    
-    sig_table = Table(sig_data, colWidths=[3.5*inch, 2*inch, 3.5*inch])
+
+    sig_table = Table(sig_data, colWidths=[3.5 * inch, 2.5 * inch, 3.5 * inch])
     sig_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-        ('ALIGN', (2, 0), (2, -1), 'CENTER'),
-        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-        ('ALIGN', (2, 0), (2, 0), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
-        ('LINEBELOW', (0, 1), (0, 1), 1, colors.black),
-        ('LINEBELOW', (2, 1), (2, 1), 1, colors.black),
+        ('FONTNAME',    (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE',    (0, 0), (-1, -1), 9),
+        ('VALIGN',      (0, 0), (-1, -1), 'BOTTOM'),
+        ('ALIGN',       (0, 0), (0, -1),  'LEFT'),
+        ('ALIGN',       (2, 0), (2, -1),  'LEFT'),
+        ('ALIGN',       (0, 2), (0, 2),   'CENTER'),
+        ('ALIGN',       (2, 2), (2, 2),   'CENTER'),
+        # Signature lines drawn under the blank row
+        ('LINEBELOW',   (0, 1), (0, 1),   1, colors.black),
+        ('LINEBELOW',   (2, 1), (2, 1),   1, colors.black),
     ]))
-    
+
     elements.append(sig_table)
 
+    # ── 8. Build & return ─────────────────────────────────────────────────────
     doc.build(elements)
     buffer.seek(0)
     return send_file(
-        buffer, mimetype='application/pdf', as_attachment=True,
-        download_name=f'medisync_inventory_{manila_today().isoformat()}.pdf'
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f'medisync_inventory_{manila_today().isoformat()}.pdf',
     )
 
 # dipensing api
