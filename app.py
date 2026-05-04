@@ -693,40 +693,41 @@ def api_export_pdf():
 
     medicines = Medicine.query.filter(Medicine.status != 'Deleted').order_by(Medicine.date_added.desc()).all()
     
-    # Aggregate medicines (Hidden Batch Strategy)
-    groups = {}
+    # Aggregated "Hidden Batch" Logic
+    import datetime
+    aggregated = {}
     for m in medicines:
-        base_stock = m.stock_number
-        parts = str(m.stock_number).split('-')
-        if len(parts) > 1 and parts[-1].isdigit():
-            base_stock = parts[0]
-            
-        key = f"{m.article_name}|{m.description_dosage or ''}|{m.unit_of_measurement}|{m.status}"
-        
-        if key not in groups:
-            groups[key] = {
+        key = (m.article_name, m.description_dosage or '', m.unit_of_measurement, m.status)
+        if key not in aggregated:
+            base_stock = m.stock_number
+            if '-' in base_stock and base_stock.split('-')[-1].isdigit():
+                base_stock = base_stock.split('-')[0]
+                
+            aggregated[key] = {
                 'stock_number': base_stock,
                 'article_name': m.article_name,
-                'description_dosage': m.description_dosage,
+                'description_dosage': m.description_dosage or '',
                 'unit_of_measurement': m.unit_of_measurement,
                 'quantity': 0,
-                'category': m.category,
-                'expiration_date': m.expiration_date,
-                'days_remaining': m.to_dict().get('days_remaining'),
+                'category': m.category or '',
+                'expiration_date': None,
+                'days_remaining': None,
                 'status': m.status
             }
             
-        groups[key]['quantity'] += m.quantity
+        agg = aggregated[key]
+        agg['quantity'] += m.quantity
         
-        d1 = groups[key]['expiration_date']
+        d1 = agg['expiration_date']
         d2 = m.expiration_date
+        cd1 = d1 if d1 else datetime.date.max
+        cd2 = d2 if d2 else datetime.date.max
         
-        if d2 is not None:
-            if d1 is None or d2 < d1:
-                groups[key]['expiration_date'] = d2
-                groups[key]['days_remaining'] = m.to_dict().get('days_remaining')
-
-    aggregated_medicines = list(groups.values())
+        if cd2 < cd1:
+            agg['expiration_date'] = m.expiration_date
+            agg['days_remaining'] = m.to_dict().get('days_remaining')
+            
+    aggregated_list = list(aggregated.values())
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=0.5*inch, leftMargin=0.5*inch, topMargin=0.5*inch, bottomMargin=0.5*inch)
@@ -747,10 +748,10 @@ def api_export_pdf():
 
     headers = ['Stock Number', 'Article', 'Dosage', 'Unit', 'Qty.', 'Category', 'Expiration Date', 'Days Left', 'Status']
     data = [headers]
-    for m in aggregated_medicines:
+    for m in aggregated_list:
         data.append([
-            m['stock_number'], m['article_name'], m['description_dosage'] or '', m['unit_of_measurement'],
-            str(m['quantity']), m['category'] or '',
+            m['stock_number'], m['article_name'], m['description_dosage'], m['unit_of_measurement'],
+            str(m['quantity']), m['category'],
             m['expiration_date'].strftime('%Y-%m-%d') if m['expiration_date'] else '',
             str(m['days_remaining']) if m['days_remaining'] is not None else '-',
             m['status']
@@ -761,7 +762,7 @@ def api_export_pdf():
 
     table = Table(data, repeatRows=1, colWidths=col_widths)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#008080')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0284c7')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 9),
