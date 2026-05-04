@@ -216,15 +216,49 @@
     }
 
     window.toggleBatchRow = function(id) {
-        var row = document.getElementById('batch-row-' + id);
+        var rows = document.querySelectorAll('.batch-row-' + id);
         var icon = document.getElementById('icon-' + id);
-        if (row.style.display === 'none') {
-            row.style.display = 'table-row';
-            icon.style.transform = 'rotate(180deg)';
-        } else {
-            row.style.display = 'none';
-            icon.style.transform = 'rotate(0deg)';
+        if (rows.length === 0) return;
+        var isHidden = rows[0].style.display === 'none';
+        
+        rows.forEach(r => {
+            r.style.display = isHidden ? 'table-row' : 'none';
+        });
+        
+        if (icon) {
+            icon.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
         }
+    };
+
+    window.openBatchSelect = function(id, actionType) {
+        var group = aggregatedMedicines.find(g => g.id === id);
+        if (!group) return;
+        var select = document.getElementById('batchSelectDropdown');
+        select.innerHTML = '';
+        group.all_batches.forEach(b => {
+            var opt = document.createElement('option');
+            opt.value = b.id;
+            var expText = b.expiration_date ? window.formatDate(b.expiration_date) : 'N/A';
+            opt.textContent = b.stock_number + ' (Qty: ' + b.quantity + ', Exp: ' + expText + ')';
+            select.appendChild(opt);
+        });
+        
+        var title = 'Select Batch';
+        if (actionType === 'edit') title = 'Select Batch to Edit';
+        else if (actionType === 'discard') title = 'Select Batch to Discard';
+        else if (actionType === 'delete') title = 'Select Batch to Delete';
+        
+        document.getElementById('batchSelectTitle').textContent = title;
+        
+        document.getElementById('batchSelectProceedBtn').onclick = function() {
+            var selectedId = parseInt(select.value);
+            window.closeModal('batchSelectModal');
+            if (actionType === 'edit') editMedicine(selectedId);
+            else if (actionType === 'discard') discardMedicine(selectedId);
+            else if (actionType === 'delete') deleteMedicine(selectedId);
+        };
+        
+        window.openModal('batchSelectModal');
     };
 
     function renderTable() {
@@ -241,27 +275,35 @@
         tbody.innerHTML = pageData.map(function (m) {
             var toggleIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle; transition: transform 0.3s;" id="icon-' + m.id + '"><polyline points="6 9 12 15 18 9"></polyline></svg>';
             
-            var mainRow = '<tr style="cursor:pointer;" onclick="toggleBatchRow(' + m.id + ')">' +
+            var actions = '<div class="actions">' +
+                '<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); window.openBatchSelect(' + m.id + ', \'edit\')">Edit</button>' +
+                '<button class="btn btn-yellow btn-sm" onclick="event.stopPropagation(); window.openBatchSelect(' + m.id + ', \'discard\')">Discard</button>' +
+                '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); window.openBatchSelect(' + m.id + ', \'delete\')">Delete</button>' +
+                '</div>';
+                
+            var mDaysHtml = '-';
+            if (m.days_remaining !== null) {
+                if (m.status === 'Expired') mDaysHtml = '<span style="color:var(--red);font-weight:700;">' + m.days_remaining + '</span>';
+                else if (m.status === 'Near Expiry') mDaysHtml = '<span style="color:var(--orange);font-weight:700;">' + m.days_remaining + '</span>';
+                else if (m.status === 'Active') mDaysHtml = '<span style="color:var(--primary);font-weight:700;">' + m.days_remaining + '</span>';
+                else mDaysHtml = '<span style="color:var(--text);font-weight:700;">' + m.days_remaining + '</span>';
+            }
+            
+            var mainRow = '<tr style="cursor:pointer;" onclick="window.toggleBatchRow(' + m.id + ')">' +
                 '<td>' + toggleIcon + ' <span style="margin-left:4px;">' + escapeHtml(m.stock_number) + '</span></td>' +
                 '<td>' + escapeHtml(m.article_name) + '</td>' +
                 '<td>' + escapeHtml(m.description_dosage) + '</td>' +
                 '<td>' + escapeHtml(m.unit_of_measurement) + '</td>' +
                 '<td><strong>' + m.total_quantity + '</strong></td>' +
                 '<td>' + escapeHtml(m.category) + '</td>' +
-                '<td style="color:var(--text-muted);">-</td>' +
-                '<td style="color:var(--text-muted);">-</td>' +
+                '<td>' + formatDate(m.expiration_date) + '</td>' +
+                '<td>' + mDaysHtml + '</td>' +
                 '<td>' + escapeHtml(m.remarks) + '</td>' +
                 '<td>' + statusBadge(m.status) + '</td>' +
-                '<td></td>' + 
+                '<td>' + actions + '</td>' + 
                 '</tr>';
                 
             var subTableRows = m.all_batches.map(function(b) {
-                var actions = '<div class="actions">' +
-                    '<button class="btn btn-outline btn-sm" onclick="editMedicine(' + b.id + ')">Edit</button>' +
-                    '<button class="btn btn-yellow btn-sm" onclick="discardMedicine(' + b.id + ')">Discard</button>' +
-                    '<button class="btn btn-danger btn-sm" onclick="deleteMedicine(' + b.id + ')">Delete</button>' +
-                    '</div>';
-                    
                 var daysHtml = '-';
                 if (b.days_remaining !== null) {
                     if (b.status === 'Expired') daysHtml = '<span style="color:var(--red);font-weight:700;">' + b.days_remaining + '</span>';
@@ -274,7 +316,7 @@
                 var rowStyle = isPrimary ? 'background-color: var(--primary-bg);' : 'background-color: var(--bg-color);';
                 var badge = isPrimary ? '<span class="badge badge-active" style="margin-left:8px;font-size:0.65rem;">Active Stock</span>' : '';
                 
-                return '<tr style="' + rowStyle + '">' +
+                return '<tr class="batch-row-' + m.id + '" style="display:none; ' + rowStyle + '">' +
                     '<td style="padding-left:32px;">&#8627; ' + escapeHtml(b.stock_number) + badge + '</td>' +
                     '<td>' + escapeHtml(b.article_name) + '</td>' +
                     '<td>' + escapeHtml(b.description_dosage) + '</td>' +
@@ -285,18 +327,11 @@
                     '<td>' + daysHtml + '</td>' +
                     '<td>' + escapeHtml(b.remarks) + '</td>' +
                     '<td>' + statusBadge(b.status) + '</td>' +
-                    '<td>' + actions + '</td>' +
+                    '<td></td>' +
                     '</tr>';
             }).join('');
             
-            var subRow = '<tr id="batch-row-' + m.id + '" style="display:none;"><td colspan="11" style="padding:0; border-bottom: 2px solid var(--border);">' +
-                '<div style="max-height: 400px; overflow-y: auto;">' +
-                '<table class="data-table" style="margin: 0; box-shadow: none; border-radius: 0; background: var(--bg-color); border: none;">' +
-                '<tbody style="border-top: none;">' + subTableRows + '</tbody>' +
-                '</table>' +
-                '</div></td></tr>';
-                
-            return mainRow + subRow;
+            return mainRow + subTableRows;
         }).join('');
     }
 

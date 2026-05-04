@@ -753,7 +753,7 @@ def api_export_pdf():
             m['stock_number'], m['article_name'], m['description_dosage'], m['unit_of_measurement'],
             str(m['quantity']), m['category'],
             m['expiration_date'].strftime('%Y-%m-%d') if m['expiration_date'] else '',
-            str(m['days_remaining']) if m['days_remaining'] is not None else '-',
+            f"{m['days_remaining']} days" if m['days_remaining'] is not None else '-',
             m['status']
         ])
 
@@ -762,7 +762,7 @@ def api_export_pdf():
 
     table = Table(data, repeatRows=1, colWidths=col_widths)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0284c7')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#5cb9a4')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 9),
@@ -776,18 +776,20 @@ def api_export_pdf():
 
     # Add signature section
     sig_data = [
-        ['Approved By:', '', 'Certified Correct By:'],
+        ['Certified Correct By:', '', 'Approved By:'],
         ['\n\n\n', '', '\n\n\n'],
-        ['Signature Over Printed Name of Head of Agency/Entity\nof Authorized Representative', '', 'Signature Over Printed Name of Inventor Committee\nChair and Members']
+        ['Signature Over Printed Name of Inventory\nCommittee Chair and Members', '', 'Signature Over Printed Name of Head of\nAgency/Entity of Authorized Representative']
     ]
     
     sig_table = Table(sig_data, colWidths=[3.5*inch, 2*inch, 3.5*inch])
     sig_table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ('ALIGN', (2, 0), (2, -1), 'LEFT'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (2, 0), (2, -1), 'CENTER'),
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+        ('ALIGN', (2, 0), (2, 0), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
         ('LINEBELOW', (0, 1), (0, 1), 1, colors.black),
         ('LINEBELOW', (2, 1), (2, 1), 1, colors.black),
