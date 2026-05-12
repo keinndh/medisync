@@ -411,27 +411,6 @@
         </div>
     </div>
 </div>
-
-<!-- Batch Select Modal -->
-<div class="modal-overlay" id="batchSelectModal">
-    <div class="modal modal-sm">
-        <div class="modal-header">
-            <h3 id="batchSelectTitle">Select Batch</h3>
-            <button class="modal-close" onclick="closeModal('batchSelectModal')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-        </div>
-        <div class="modal-body">
-            <p style="margin-bottom: 16px; color: var(--text-secondary);">Please select the specific batch you want to perform this action on:</p>
-            <div class="form-group">
-                <select id="batchSelectDropdown" class="form-control"></select>
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-outline" onclick="closeModal('batchSelectModal')">Cancel</button>
-            <button class="btn btn-primary" id="batchSelectProceedBtn">Proceed</button>
-        </div>
-    </div>
-</div>
-
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/inventory.js') }}"></script>

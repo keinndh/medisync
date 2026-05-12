@@ -116,52 +116,34 @@
         input.addEventListener('blur', () => setTimeout(() => dropdown.classList.remove('show'), 200));
     }
 
-    // --- Batch Aggregation Logic ---
+    // --- Aggregated "Hidden Batch" Logic ---
     function aggregateMedicines(medicines) {
         var groups = {};
         medicines.forEach(m => {
+            var baseStock = m.stock_number;
+            var parts = m.stock_number.split('-');
+            if (parts.length > 1 && !isNaN(parts[parts.length-1])) {
+                baseStock = parts[0]; 
+            }
+
             var key = m.article_name + '|' + (m.description_dosage || '') + '|' + m.unit_of_measurement + '|' + m.status;
             if (!groups[key]) {
-                groups[key] = {
-                    key: key,
-                    total_quantity: 0,
-                    batches: []
-                };
+                groups[key] = Object.assign({}, m);
+                groups[key].stock_number = baseStock;
+                groups[key].quantity = 0;
+                groups[key].batches = [];
             }
-            groups[key].total_quantity += m.quantity;
+            groups[key].quantity += m.quantity;
+            var d1 = groups[key].expiration_date ? new Date(groups[key].expiration_date) : new Date(8640000000000000);
+            var d2 = m.expiration_date ? new Date(m.expiration_date) : new Date(8640000000000000);
+            if (d2 < d1) {
+                groups[key].expiration_date = m.expiration_date;
+                groups[key].days_remaining = m.days_remaining;
+                groups[key].id = m.id; // representative ID
+            }
             groups[key].batches.push(m);
         });
-
-        var result = [];
-        Object.values(groups).forEach(g => {
-            // Sort chronologically (oldest first)
-            g.batches.sort((a, b) => {
-                var d1 = new Date(a.date_added || 0);
-                var d2 = new Date(b.date_added || 0);
-                if (d1.getTime() === d2.getTime()) return a.id - b.id;
-                return d1 - d2;
-            });
-            
-            // Primary batch is the oldest with stock. If all 0, use the oldest.
-            var primaryBatch = g.batches.find(b => b.quantity > 0) || g.batches[0];
-            
-            var rep = Object.assign({}, primaryBatch);
-            rep.is_aggregated = true;
-            rep.total_quantity = g.total_quantity;
-            rep.all_batches = g.batches;
-            
-            result.push(rep);
-        });
-        
-        // Sort result to keep table stable (e.g., newest primary batches first)
-        result.sort((a, b) => {
-             var d1 = new Date(a.date_added || 0);
-             var d2 = new Date(b.date_added || 0);
-             if (d1.getTime() === d2.getTime()) return b.id - a.id;
-             return d2 - d1;
-        });
-        
-        return result;
+        return Object.values(groups);
     }
 
     // --- Load Medicines ---
@@ -215,52 +197,6 @@
         }
     }
 
-    window.toggleBatchRow = function(id) {
-        var rows = document.querySelectorAll('.batch-row-' + id);
-        var icon = document.getElementById('icon-' + id);
-        if (rows.length === 0) return;
-        var isHidden = rows[0].style.display === 'none';
-        
-        rows.forEach(r => {
-            r.style.display = isHidden ? 'table-row' : 'none';
-        });
-        
-        if (icon) {
-            icon.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
-        }
-    };
-
-    window.openBatchSelect = function(id, actionType) {
-        var group = aggregatedMedicines.find(g => g.id === id);
-        if (!group) return;
-        var select = document.getElementById('batchSelectDropdown');
-        select.innerHTML = '';
-        group.all_batches.forEach(b => {
-            var opt = document.createElement('option');
-            opt.value = b.id;
-            var expText = b.expiration_date ? window.formatDate(b.expiration_date) : 'N/A';
-            opt.textContent = b.stock_number + ' (Qty: ' + b.quantity + ', Exp: ' + expText + ')';
-            select.appendChild(opt);
-        });
-        
-        var title = 'Select Batch';
-        if (actionType === 'edit') title = 'Select Batch to Edit';
-        else if (actionType === 'discard') title = 'Select Batch to Discard';
-        else if (actionType === 'delete') title = 'Select Batch to Delete';
-        
-        document.getElementById('batchSelectTitle').textContent = title;
-        
-        document.getElementById('batchSelectProceedBtn').onclick = function() {
-            var selectedId = parseInt(select.value);
-            window.closeModal('batchSelectModal');
-            if (actionType === 'edit') editMedicine(selectedId);
-            else if (actionType === 'discard') discardMedicine(selectedId);
-            else if (actionType === 'delete') deleteMedicine(selectedId);
-        };
-        
-        window.openModal('batchSelectModal');
-    };
-
     function renderTable() {
         var tbody = document.getElementById('inventoryBody');
         if (!aggregatedMedicines.length) {
@@ -273,65 +209,24 @@
         window.renderPagination('inventoryPagination', aggregatedMedicines.length, currentInventoryPage, inventoryPageSize, 'changeInventoryPage');
 
         tbody.innerHTML = pageData.map(function (m) {
-            var toggleIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle; transition: transform 0.3s;" id="icon-' + m.id + '"><polyline points="6 9 12 15 18 9"></polyline></svg>';
-            
             var actions = '<div class="actions">' +
-                '<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); window.openBatchSelect(' + m.id + ', \'edit\')">Edit</button>' +
-                '<button class="btn btn-yellow btn-sm" onclick="event.stopPropagation(); window.openBatchSelect(' + m.id + ', \'discard\')">Discard</button>' +
-                '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); window.openBatchSelect(' + m.id + ', \'delete\')">Delete</button>' +
+                '<button class="btn btn-outline btn-sm" onclick="editMedicine(' + m.id + ')">Edit</button>' +
+                '<button class="btn btn-yellow btn-sm" onclick="discardMedicine(' + m.id + ')">Discard</button>' +
+                '<button class="btn btn-danger btn-sm" onclick="deleteMedicine(' + m.id + ')">Delete</button>' +
                 '</div>';
-                
-            var mDaysHtml = '-';
+            var daysHtml = '-';
             if (m.days_remaining !== null) {
-                if (m.status === 'Expired') mDaysHtml = '<span style="color:var(--red);font-weight:700;">' + m.days_remaining + '</span>';
-                else if (m.status === 'Near Expiry') mDaysHtml = '<span style="color:var(--orange);font-weight:700;">' + m.days_remaining + '</span>';
-                else if (m.status === 'Active') mDaysHtml = '<span style="color:var(--primary);font-weight:700;">' + m.days_remaining + '</span>';
-                else mDaysHtml = '<span style="color:var(--text);font-weight:700;">' + m.days_remaining + '</span>';
+                if (m.status === 'Expired') daysHtml = '<span style="color:var(--red);font-weight:700;">' + m.days_remaining + '</span>';
+                else if (m.status === 'Near Expiry') daysHtml = '<span style="color:var(--orange);font-weight:700;">' + m.days_remaining + '</span>';
+                else if (m.status === 'Active') daysHtml = '<span style="color:var(--primary);font-weight:700;">' + m.days_remaining + '</span>';
+                else daysHtml = '<span style="color:var(--text);font-weight:700;">' + m.days_remaining + '</span>';
             }
-            
-            var mainRow = '<tr style="cursor:pointer;" onclick="window.toggleBatchRow(' + m.id + ')">' +
-                '<td>' + toggleIcon + ' <span style="margin-left:4px;">' + escapeHtml(m.stock_number) + '</span></td>' +
-                '<td>' + escapeHtml(m.article_name) + '</td>' +
-                '<td>' + escapeHtml(m.description_dosage) + '</td>' +
-                '<td>' + escapeHtml(m.unit_of_measurement) + '</td>' +
-                '<td><strong>' + m.total_quantity + '</strong></td>' +
-                '<td>' + escapeHtml(m.category) + '</td>' +
-                '<td>' + formatDate(m.expiration_date) + '</td>' +
-                '<td>' + mDaysHtml + '</td>' +
-                '<td>' + escapeHtml(m.remarks) + '</td>' +
-                '<td>' + statusBadge(m.status) + '</td>' +
-                '<td>' + actions + '</td>' + 
-                '</tr>';
-                
-            var subTableRows = m.all_batches.map(function(b) {
-                var daysHtml = '-';
-                if (b.days_remaining !== null) {
-                    if (b.status === 'Expired') daysHtml = '<span style="color:var(--red);font-weight:700;">' + b.days_remaining + '</span>';
-                    else if (b.status === 'Near Expiry') daysHtml = '<span style="color:var(--orange);font-weight:700;">' + b.days_remaining + '</span>';
-                    else if (b.status === 'Active') daysHtml = '<span style="color:var(--primary);font-weight:700;">' + b.days_remaining + '</span>';
-                    else daysHtml = '<span style="color:var(--text);font-weight:700;">' + b.days_remaining + '</span>';
-                }
-                
-                var isPrimary = (b.id === m.id);
-                var rowStyle = isPrimary ? 'background-color: var(--primary-bg);' : 'background-color: var(--bg-color);';
-                var badge = isPrimary ? '<span class="badge badge-active" style="margin-left:8px;font-size:0.65rem;">Active Stock</span>' : '';
-                
-                return '<tr class="batch-row-' + m.id + '" style="display:none; ' + rowStyle + '">' +
-                    '<td style="padding-left:32px;">&#8627; ' + escapeHtml(b.stock_number) + badge + '</td>' +
-                    '<td>' + escapeHtml(b.article_name) + '</td>' +
-                    '<td>' + escapeHtml(b.description_dosage) + '</td>' +
-                    '<td>' + escapeHtml(b.unit_of_measurement) + '</td>' +
-                    '<td>' + b.quantity + '</td>' +
-                    '<td>' + escapeHtml(b.category) + '</td>' +
-                    '<td>' + formatDate(b.expiration_date) + '</td>' +
-                    '<td>' + daysHtml + '</td>' +
-                    '<td>' + escapeHtml(b.remarks) + '</td>' +
-                    '<td>' + statusBadge(b.status) + '</td>' +
-                    '<td></td>' +
-                    '</tr>';
-            }).join('');
-            
-            return mainRow + subTableRows;
+            return '<tr><td>' + escapeHtml(m.stock_number) + '</td><td>' + escapeHtml(m.article_name) +
+                '</td><td>' + escapeHtml(m.description_dosage) + '</td><td>' + escapeHtml(m.unit_of_measurement) +
+                '</td><td>' + m.quantity +
+                '</td><td>' + escapeHtml(m.category) + '</td><td>' + formatDate(m.expiration_date) +
+                '</td><td>' + daysHtml + '</td><td>' + escapeHtml(m.remarks) + '</td><td>' + statusBadge(m.status) +
+                '</td><td>' + actions + '</td></tr>';
         }).join('');
     }
 
@@ -579,7 +474,12 @@
 
     // --- Discard Medicine ---
     window.discardMedicine = function (id) {
-        document.getElementById('discardMedId').value = JSON.stringify([id]);
+        var group = aggregatedMedicines.find(g => g.id === id);
+        if (group && group.batches) {
+            document.getElementById('discardMedId').value = JSON.stringify(group.batches.map(b => b.id));
+        } else {
+            document.getElementById('discardMedId').value = JSON.stringify([id]);
+        }
         document.getElementById('discardReason').value = '';
         openModal('discardModal');
     };
@@ -608,7 +508,12 @@
 
     // --- Delete Medicine ---
     window.deleteMedicine = function (id) {
-        document.getElementById('deleteMedId').value = JSON.stringify([id]);
+        var group = aggregatedMedicines.find(g => g.id === id);
+        if (group && group.batches) {
+            document.getElementById('deleteMedId').value = JSON.stringify(group.batches.map(b => b.id));
+        } else {
+            document.getElementById('deleteMedId').value = JSON.stringify([id]);
+        }
         document.getElementById('deleteReason').value = '';
         openModal('deleteModal');
     };

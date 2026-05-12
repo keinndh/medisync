@@ -216,6 +216,19 @@
              return new Date(a.expiration_date || '9999-12-31') - new Date(b.expiration_date || '9999-12-31');
         });
 
+        // --- FEFO Auto-Allocation ---
+        var totalDesired = parseInt(document.getElementById('dispQty').value) || 0;
+        // Auto-allocate if totalDesired is set and no manual selection exists yet
+        if (totalDesired > 0 && Object.keys(selectedBatches).length === 0) {
+            var remaining = totalDesired;
+            availableBatches.forEach(function(b) {
+                if (remaining <= 0) return;
+                var take = Math.min(remaining, b.quantity);
+                selectedBatches[b.id] = take;
+                remaining -= take;
+            });
+        }
+
         document.getElementById('batchModalMedName').textContent = medName;
         var tbody = document.getElementById('batchModalBody');
         tbody.innerHTML = availableBatches.map(function(b) {

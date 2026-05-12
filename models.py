@@ -141,6 +141,7 @@ class Dispensing(db.Model):
     quantity_dispensed = db.Column(db.Integer, nullable=False)
     date_time = db.Column(db.DateTime, default=lambda: manila_now())
     remarks = db.Column(db.Text, default='')
+    serial_number = db.Column(db.String(20), unique=True, nullable=True)
 
     def to_dict(self):
         return {
@@ -155,7 +156,8 @@ class Dispensing(db.Model):
             'center_name': self.center.name if self.center else '',
             'quantity_dispensed': self.quantity_dispensed,
             'date_time': self.date_time.isoformat() if self.date_time else None,
-            'remarks': self.remarks
+            'remarks': self.remarks,
+            'serial_number': self.serial_number
         }
 
 

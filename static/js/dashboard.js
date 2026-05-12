@@ -53,6 +53,32 @@
         });
     });
 
+    // --- Aggregated "Hidden Batch" Logic ---
+    function aggregateMedicines(medicines) {
+        var groups = {};
+        medicines.forEach(m => {
+            var baseStock = m.stock_number;
+            var parts = m.stock_number.split('-');
+            if (parts.length > 1 && !isNaN(parts[parts.length-1])) {
+                baseStock = parts[0]; 
+            }
+
+            var key = m.article_name + '|' + (m.description_dosage || '') + '|' + m.unit_of_measurement + '|' + m.status;
+            if (!groups[key]) {
+                groups[key] = Object.assign({}, m);
+                groups[key].stock_number = baseStock;
+                groups[key].quantity = 0;
+            }
+            groups[key].quantity += m.quantity;
+            var d1 = groups[key].expiration_date ? new Date(groups[key].expiration_date) : new Date(8640000000000000);
+            var d2 = m.expiration_date ? new Date(m.expiration_date) : new Date(8640000000000000);
+            if (d2 < d1) {
+                groups[key].expiration_date = m.expiration_date;
+                groups[key].days_remaining = m.days_remaining;
+            }
+        });
+        return Object.values(groups);
+    }
 
     var currentBlockPage = 1;
     var currentBlockData = [];
@@ -110,6 +136,10 @@
         try {
             var res = await fetch(window.API_BASE + '/api/dashboard/block/' + type);
             var items = await res.json();
+            
+            if (type !== 'dispensed') {
+                items = aggregateMedicines(items);
+            }
             
             currentBlockType = type;
             currentBlockData = items;
