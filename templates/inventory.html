@@ -1,6 +1,67 @@
 {% extends "base.html" %}
 {% block title %}Inventory{% endblock %}
 {% block content %}
+<style>
+    /* Styling for original batch in batches modal */
+    .original-batch-row {
+        background-color: rgba(34, 197, 94, 0.08) !important;
+        border-left: 4px solid #22c55e !important;
+    }
+    .original-batch-row td {
+        font-weight: 600;
+    }
+    .original-stock-badge {
+        background-color: #22c55e;
+        color: white;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.72rem;
+        font-weight: bold;
+        display: inline-block;
+        margin-right: 8px;
+        vertical-align: middle;
+        text-transform: uppercase;
+    }
+    
+    /* Batch actions three-dots dropdown styles */
+    .batch-action-dropdown {
+        position: relative;
+        display: inline-block;
+    }
+    .batch-dropdown-menu {
+        display: none;
+        position: absolute;
+        right: 0;
+        top: 100%;
+        background: var(--card-bg, #ffffff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 8px;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        z-index: 9999;
+        min-width: 130px;
+        padding: 6px 0;
+    }
+    .batch-dropdown-menu button {
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 8px 16px;
+        background: none;
+        border: none;
+        font-size: 0.85rem;
+        color: var(--text-color, #1e293b);
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
+    }
+    .batch-dropdown-menu button:hover {
+        background: var(--border-color, #f1f5f9);
+    }
+    
+    /* Highlight table row on hover to invite clicking */
+    .data-table tbody tr:hover {
+        background-color: rgba(0, 0, 0, 0.02);
+    }
+</style>
 <div class="page-title-row">
     <div>
         <h1 class="page-title">Inventory</h1>
@@ -408,6 +469,57 @@
         <div class="modal-footer" style="justify-content:center;gap:12px;">
             <button class="btn btn-outline" onclick="closeModal('duplicateCategoryModal')">Cancel</button>
             <button class="btn btn-primary" id="dupCategoryAddBtn">Add</button>
+        </div>
+    </div>
+</div>
+
+<!-- Medicine Batches Detail Modal -->
+<div class="modal-overlay" id="medBatchesModal">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3>Medicine Batches Details</h3>
+            <button class="modal-close" onclick="closeModal('medBatchesModal')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+            <!-- Over the table info: brand name, dosage, unit, generic name -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; padding: 12px; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border-color);">
+                <div>
+                    <strong style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Brand Name</strong>
+                    <span id="batchInfoBrand" style="font-weight: 600; font-size: 0.95rem; color: var(--text-color);">-</span>
+                </div>
+                <div>
+                    <strong style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Dosage</strong>
+                    <span id="batchInfoDosage" style="font-weight: 600; font-size: 0.95rem; color: var(--text-color);">-</span>
+                </div>
+                <div>
+                    <strong style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Unit</strong>
+                    <span id="batchInfoUnit" style="font-weight: 600; font-size: 0.95rem; color: var(--text-color);">-</span>
+                </div>
+                <div>
+                    <strong style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Generic Name</strong>
+                    <span id="batchInfoGeneric" style="font-weight: 600; font-size: 0.95rem; color: var(--text-color);">-</span>
+                </div>
+            </div>
+
+            <div class="table-wrapper" style="overflow: visible;">
+                <table class="data-table" style="overflow: visible;">
+                    <thead>
+                        <tr>
+                            <th>Stock #</th>
+                            <th>Qty</th>
+                            <th>Date Added</th>
+                            <th>Exp. Date</th>
+                            <th>Days to Expire</th>
+                            <th>Status</th>
+                            <th>Remarks</th>
+                            <th style="width: 80px;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="medBatchesTableBody">
+                        <!-- Loaded dynamically -->
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>

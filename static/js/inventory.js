@@ -146,6 +146,22 @@
         return Object.values(groups);
     }
 
+    function getOriginalStockNumber(stockNumber) {
+        if (!stockNumber) return '';
+        var parts = stockNumber.split('-');
+        if (parts.length > 1) {
+            var lastPart = parts[parts.length - 1];
+            var secLastPart = parts[parts.length - 2];
+            if (secLastPart && secLastPart.length === 8 && !isNaN(secLastPart) && !isNaN(lastPart)) {
+                return parts.slice(0, parts.length - 2).join('-');
+            }
+            if (lastPart.length === 8 && !isNaN(lastPart)) {
+                return parts.slice(0, parts.length - 1).join('-');
+            }
+        }
+        return stockNumber;
+    }
+
     // --- Load Medicines ---
     var aggregatedMedicines = [];
     var currentInventoryPage = 1;
@@ -188,7 +204,45 @@
         try {
             var res = await fetch(window.API_BASE + '/api/medicines?' + params.toString());
             allMedicines = await res.json();
-            aggregatedMedicines = allMedicines;
+            
+            // --- Group by Original Batch ---
+            var originalBatches = {};
+            var orderKeys = [];
+            var restockedBatches = [];
+
+            allMedicines.forEach(function(m) {
+                if (!m.is_restock) {
+                    if (!originalBatches[m.stock_number]) {
+                        orderKeys.push(m.stock_number);
+                    }
+                    originalBatches[m.stock_number] = Object.assign({}, m, {
+                        original_quantity: m.quantity,
+                        quantity: m.quantity,
+                        batches: [m]
+                    });
+                } else {
+                    restockedBatches.push(m);
+                }
+            });
+
+            restockedBatches.forEach(function(r) {
+                var parentStock = getOriginalStockNumber(r.stock_number);
+                if (originalBatches[parentStock]) {
+                    originalBatches[parentStock].quantity += r.quantity;
+                    originalBatches[parentStock].batches.push(r);
+                } else {
+                    if (!originalBatches[r.stock_number]) {
+                        orderKeys.push(r.stock_number);
+                    }
+                    originalBatches[r.stock_number] = Object.assign({}, r, {
+                        original_quantity: r.quantity,
+                        quantity: r.quantity,
+                        batches: [r]
+                    });
+                }
+            });
+
+            aggregatedMedicines = orderKeys.map(function(key) { return originalBatches[key]; });
             currentInventoryPage = 1;
             renderTable();
         } catch (e) {
@@ -221,7 +275,7 @@
                 else if (m.status === 'Active') daysHtml = '<span style="color:var(--primary);font-weight:700;">' + m.days_remaining + '</span>';
                 else daysHtml = '<span style="color:var(--text);font-weight:700;">' + m.days_remaining + '</span>';
             }
-            return '<tr><td>' + escapeHtml(m.stock_number) + '</td><td>' + escapeHtml(m.article_name) +
+            return '<tr style="cursor: pointer;" onclick="window.openMedicineBatchesModal(\'' + escapeHtml(m.stock_number) + '\', event)"><td>' + escapeHtml(m.stock_number) + '</td><td>' + escapeHtml(m.article_name) +
                 '</td><td>' + escapeHtml(m.description_dosage) + '</td><td>' + escapeHtml(m.unit_of_measurement) +
                 '</td><td>' + m.quantity +
                 '</td><td>' + escapeHtml(m.category) + '</td><td>' + formatDate(m.expiration_date) +
@@ -229,6 +283,128 @@
                 '</td><td>' + actions + '</td></tr>';
         }).join('');
     }
+
+    // --- Helper Functions for Medicine Batches ---
+    window.openMedicineBatchesModal = function(stockNumber, event) {
+        if (event && (event.target.closest('.actions') || event.target.closest('button'))) {
+            return;
+        }
+        
+        var group = aggregatedMedicines.find(function(g) { return g.stock_number === stockNumber; });
+        if (!group) return;
+
+        document.getElementById('batchInfoBrand').textContent = group.article_name || '-';
+        document.getElementById('batchInfoDosage').textContent = group.description_dosage || '-';
+        document.getElementById('batchInfoUnit').textContent = group.unit_of_measurement || '-';
+        document.getElementById('batchInfoGeneric').textContent = group.category || '-';
+
+        var tbody = document.getElementById('medBatchesTableBody');
+        tbody.innerHTML = '';
+
+        // Sort batches: original first, then by date/stock number
+        var sortedBatches = group.batches.slice().sort(function(a, b) {
+            if (!a.is_restock && b.is_restock) return -1;
+            if (a.is_restock && !b.is_restock) return 1;
+            return new Date(a.date_added) - new Date(b.date_added);
+        });
+
+        tbody.innerHTML = sortedBatches.map(function(m) {
+            var isOriginal = !m.is_restock;
+            var rowClass = isOriginal ? 'class="original-batch-row"' : '';
+            
+            var displayStock = m.stock_number;
+            if (m.is_restock) {
+                var parentStock = getOriginalStockNumber(m.stock_number);
+                var parts = m.stock_number.split('-');
+                var dateStr = parts[parts.length - 1];
+                if (!isNaN(dateStr) && dateStr.length === 1 && parts.length > 2) {
+                    dateStr = parts[parts.length - 2];
+                }
+                if (dateStr && dateStr.length === 8) {
+                    var mm = dateStr.substring(0, 2);
+                    var dd = dateStr.substring(2, 4);
+                    var yyyy = dateStr.substring(4, 8);
+                    displayStock = parentStock + ' - ' + mm + '/' + dd + '/' + yyyy;
+                }
+            } else {
+                displayStock = '<span class="original-stock-badge">Original</span>' + escapeHtml(m.stock_number);
+            }
+
+            var daysHtml = '-';
+            if (m.days_remaining !== null) {
+                if (m.status === 'Expired') daysHtml = '<span style="color:var(--red);font-weight:700;">' + m.days_remaining + '</span>';
+                else if (m.status === 'Near Expiry') daysHtml = '<span style="color:var(--orange);font-weight:700;">' + m.days_remaining + '</span>';
+                else if (m.status === 'Active') daysHtml = '<span style="color:var(--primary);font-weight:700;">' + m.days_remaining + '</span>';
+                else daysHtml = '<span style="color:var(--text);font-weight:700;">' + m.days_remaining + '</span>';
+            }
+
+            var actionHtml = 
+                '<div class="batch-action-dropdown">' +
+                    '<button class="btn btn-ghost btn-sm dropdown-trigger" onclick="window.toggleBatchActionMenu(' + m.id + ', event)" style="padding: 4px 8px; font-weight: bold; font-size: 1.1rem; border: none; background: none; cursor: pointer; color: var(--text-color);">⋮</button>' +
+                    '<div id="batchActionMenu_' + m.id + '" class="batch-dropdown-menu">' +
+                        '<button onclick="window.editMedicineBatch(' + m.id + ')">Edit</button>' +
+                        '<button onclick="window.discardMedicineBatch(' + m.id + ')" style="color:var(--yellow);">Discard</button>' +
+                        '<button onclick="window.deleteMedicineBatch(' + m.id + ')" style="color:var(--red);">Delete</button>' +
+                    '</div>' +
+                '</div>';
+
+            return '<tr ' + rowClass + '>' +
+                '<td>' + displayStock + '</td>' +
+                '<td>' + m.quantity + '</td>' +
+                '<td>' + formatDate(m.date_added) + '</td>' +
+                '<td>' + formatDate(m.expiration_date) + '</td>' +
+                '<td>' + daysHtml + '</td>' +
+                '<td>' + statusBadge(m.status) + '</td>' +
+                '<td>' + escapeHtml(m.remarks || '') + '</td>' +
+                '<td style="overflow: visible;">' + actionHtml + '</td>' +
+                '</tr>';
+        }).join('');
+
+        openModal('medBatchesModal');
+    };
+
+    window.toggleBatchActionMenu = function(id, event) {
+        event.stopPropagation();
+        var menu = document.getElementById('batchActionMenu_' + id);
+        
+        var dropdowns = document.querySelectorAll('.batch-dropdown-menu');
+        dropdowns.forEach(function(d) {
+            if (d !== menu) {
+                d.style.display = 'none';
+            }
+        });
+        
+        if (menu.style.display === 'block') {
+            menu.style.display = 'none';
+        } else {
+            menu.style.display = 'block';
+        }
+    };
+
+    window.editMedicineBatch = function(id) {
+        closeModal('medBatchesModal');
+        window.editMedicine(id);
+    };
+
+    window.discardMedicineBatch = function(id) {
+        closeModal('medBatchesModal');
+        window.discardMedicine(id, true);
+    };
+
+    window.deleteMedicineBatch = function(id) {
+        closeModal('medBatchesModal');
+        window.deleteMedicine(id, true);
+    };
+
+    // Close action menus if the user clicks anywhere else
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.batch-action-dropdown')) {
+            var dropdowns = document.querySelectorAll('.batch-dropdown-menu');
+            dropdowns.forEach(function(d) {
+                d.style.display = 'none';
+            });
+        }
+    });
 
     // --- Toolbar Event Listeners ---
     const invFilterType = document.getElementById('invFilterType');
@@ -473,8 +649,8 @@
     });
 
     // --- Discard Medicine ---
-    window.discardMedicine = function (id) {
-        var group = aggregatedMedicines.find(g => g.id === id);
+    window.discardMedicine = function (id, singleOnly) {
+        var group = !singleOnly ? aggregatedMedicines.find(g => g.id === id) : null;
         if (group && group.batches) {
             document.getElementById('discardMedId').value = JSON.stringify(group.batches.map(b => b.id));
         } else {
@@ -507,8 +683,8 @@
     });
 
     // --- Delete Medicine ---
-    window.deleteMedicine = function (id) {
-        var group = aggregatedMedicines.find(g => g.id === id);
+    window.deleteMedicine = function (id, singleOnly) {
+        var group = !singleOnly ? aggregatedMedicines.find(g => g.id === id) : null;
         if (group && group.batches) {
             document.getElementById('deleteMedId').value = JSON.stringify(group.batches.map(b => b.id));
         } else {
