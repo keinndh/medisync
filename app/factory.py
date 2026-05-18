@@ -27,7 +27,10 @@ def create_app():
     if database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
     if not database_url:
-        database_url = 'sqlite:///fallback.db'
+        if os.getenv('VERCEL'):
+            database_url = 'sqlite:////tmp/fallback.db'
+        else:
+            database_url = 'sqlite:///fallback.db'
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 
     upload_folder = '/tmp/uploads' if os.getenv('VERCEL') else os.path.join(root, 'static', 'uploads')
