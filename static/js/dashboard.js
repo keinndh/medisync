@@ -137,10 +137,6 @@
             var res = await fetch(window.API_BASE + '/api/dashboard/block/' + type);
             var items = await res.json();
             
-            if (type !== 'dispensed') {
-                items = aggregateMedicines(items);
-            }
-            
             currentBlockType = type;
             currentBlockData = items;
             currentBlockPage = 1;
@@ -205,7 +201,6 @@
         try {
             var res = await fetch(window.API_BASE + '/api/analytics/expired');
             var items = await res.json();
-            items = aggregateMedicines(items);
             document.getElementById('expiredCount').textContent = items.length;
             expiredData = items;
             expiredPage = 1;
@@ -246,7 +241,6 @@
         try {
             var res = await fetch(window.API_BASE + '/api/analytics/expiring');
             var items = await res.json();
-            items = aggregateMedicines(items);
             document.getElementById('expiringCount').textContent = items.length;
             expiringData = items;
             expiringPage = 1;

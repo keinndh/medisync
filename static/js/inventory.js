@@ -188,7 +188,7 @@
         try {
             var res = await fetch(window.API_BASE + '/api/medicines?' + params.toString());
             allMedicines = await res.json();
-            aggregatedMedicines = aggregateMedicines(allMedicines);
+            aggregatedMedicines = allMedicines;
             currentInventoryPage = 1;
             renderTable();
         } catch (e) {
@@ -610,10 +610,6 @@
         try {
             var res = await fetch(window.API_BASE + '/api/dashboard/block/' + type);
             var items = await res.json();
-            
-            if (type !== 'dispensed') {
-                items = aggregateMedicines(items);
-            }
             
             currentBlockType = type;
             currentBlockData = items;

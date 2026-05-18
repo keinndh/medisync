@@ -700,42 +700,6 @@ def api_export_pdf():
     import os
 
     medicines = Medicine.query.filter(Medicine.status != 'Deleted').order_by(Medicine.date_added.desc()).all()
-    
-    # Aggregated "Hidden Batch" Logic
-    import datetime
-    aggregated = {}
-    for m in medicines:
-        key = (m.article_name, m.description_dosage or '', m.unit_of_measurement, m.status)
-        if key not in aggregated:
-            base_stock = m.stock_number
-            if '-' in base_stock and base_stock.split('-')[-1].isdigit():
-                base_stock = base_stock.split('-')[0]
-                
-            aggregated[key] = {
-                'stock_number': base_stock,
-                'article_name': m.article_name,
-                'description_dosage': m.description_dosage or '',
-                'unit_of_measurement': m.unit_of_measurement,
-                'quantity': 0,
-                'category': m.category or '',
-                'expiration_date': None,
-                'days_remaining': None,
-                'status': m.status
-            }
-            
-        agg = aggregated[key]
-        agg['quantity'] += m.quantity
-        
-        d1 = agg['expiration_date']
-        d2 = m.expiration_date
-        cd1 = d1 if d1 else datetime.date.max
-        cd2 = d2 if d2 else datetime.date.max
-        
-        if cd2 < cd1:
-            agg['expiration_date'] = m.expiration_date
-            agg['days_remaining'] = m.to_dict().get('days_remaining')
-            
-    aggregated_list = list(aggregated.values())
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=0.5*inch, leftMargin=0.5*inch, topMargin=0.5*inch, bottomMargin=0.5*inch)
@@ -756,13 +720,13 @@ def api_export_pdf():
 
     headers = ['Stock Number', 'Article', 'Dosage', 'Unit', 'Qty.', 'Category', 'Expiration Date', 'Days Left', 'Status']
     data = [headers]
-    for m in aggregated_list:
+    for m in medicines:
         data.append([
-            m['stock_number'], m['article_name'], m['description_dosage'], m['unit_of_measurement'],
-            str(m['quantity']), m['category'],
-            m['expiration_date'].strftime('%Y-%m-%d') if m['expiration_date'] else '',
-            str(m['days_remaining']) if m['days_remaining'] is not None else '-',
-            m['status']
+            m.stock_number, m.article_name, m.description_dosage or '', m.unit_of_measurement,
+            str(m.quantity), m.category or '',
+            m.expiration_date.strftime('%Y-%m-%d') if m.expiration_date else '',
+            str(m.to_dict().get('days_remaining')) if m.to_dict().get('days_remaining') is not None else '-',
+            m.status
         ])
 
     # Calculate column widths to fit landscape A4
