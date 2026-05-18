@@ -27,10 +27,7 @@ def create_app():
     if database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
     if not database_url:
-        if os.getenv('VERCEL'):
-            database_url = 'sqlite:////tmp/fallback.db'
-        else:
-            database_url = 'sqlite:///fallback.db'
+        database_url = 'sqlite:///fallback.db'
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 
     upload_folder = '/tmp/uploads' if os.getenv('VERCEL') else os.path.join(root, 'static', 'uploads')
@@ -72,63 +69,38 @@ def create_app():
 def _init_db(app):
     from sqlalchemy import inspect, text
     from core.models import User
-    import traceback
-    import os
 
     try:
-        with app.app_context():
-            db.create_all()
+        db.create_all()
 
-            insp = inspect(db.engine)
+        insp      = inspect(db.engine)
+        med_cols  = [c['name'] for c in insp.get_columns('medicines')]
+        user_cols = [c['name'] for c in insp.get_columns('users')]
 
-            migrations = [
-                ('medicines', 'category_type', 
-                 "ALTER TABLE medicines ADD COLUMN IF NOT EXISTS category_type VARCHAR(200) DEFAULT ''"),
-                ('users', 'role', 
-                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'admin'"),
-                ('users', 'parent_id', 
-                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES users(id)"),
-                ('users', 'profile_picture', 
-                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture TEXT DEFAULT ''"),
-            ]
-
-            for table, col, sql in migrations:
-                try:
-                    # Check if column already exists to avoid unnecessary queries
-                    columns = [c['name'] for c in insp.get_columns(table)]
-                    if col not in columns:
-                        db.session.execute(text(sql))
-                        db.session.commit()
-                        print(f"Added missing column: {table}.{col}")
-                    else:
-                        print(f"Column already exists: {table}.{col}")
-                except Exception as e:
-                    print(f"Migration skipped for {table}.{col}: {e}")
-                    db.session.rollback()
-
-            # Add expires_at to auth_tokens if missing
-            try:
-                token_cols = [c['name'] for c in insp.get_columns('auth_tokens')]
-                if 'expires_at' not in token_cols:
-                    db.session.execute(text(
-                        "ALTER TABLE auth_tokens ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP"
-                    ))
-                    db.session.commit()
-            except Exception as e:
-                print(f"auth_tokens migration skipped: {e}")
-                db.session.rollback()
-
-            # Create default admin user if not exists
-            if not User.query.filter_by(username='admin').first():
-                u = User(username='admin', full_name='System Admin', role='admin')
-                u.set_password(os.getenv('ADMIN_PASSWORD', 'ChangeMe@1234'))
-                db.session.add(u)
+        migrations = [
+            ('medicines', 'category_type',  "ALTER TABLE medicines ADD COLUMN category_type VARCHAR(200) DEFAULT ''"),
+            ('users',     'role',            "ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'admin'"),
+            ('users',     'parent_id',       "ALTER TABLE users ADD COLUMN parent_id INTEGER REFERENCES users(id)"),
+            ('users',     'profile_picture', "ALTER TABLE users ADD COLUMN profile_picture TEXT DEFAULT ''"),
+        ]
+        col_map = {'medicines': med_cols, 'users': user_cols}
+        for table, col, sql in migrations:
+            if col not in col_map.get(table, []):
+                db.session.execute(text(sql))
                 db.session.commit()
-                print("Default admin user created.")
+
+        _add_auth_tokens_expires_at(insp)
+
+        if not User.query.filter_by(username='admin').first():
+            u = User(username='admin', full_name='System Admin', role='admin')
+            u.set_password(os.getenv('ADMIN_PASSWORD', 'ChangeMe@1234'))
+            db.session.add(u)
+            db.session.commit()
 
     except Exception as e:
-        print(f"DB init error: {e}")
-        traceback.print_exc()
+        import traceback
+        print(f'DB init error: {e}')
+        print(traceback.format_exc())
         db.session.rollback()
 
 
